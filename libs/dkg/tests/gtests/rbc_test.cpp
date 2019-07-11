@@ -1,4 +1,5 @@
 #include "dkg/rbc.hpp"
+#include "dkg/dkg_messages.hpp"
 #include "core/serializers/byte_array_buffer.hpp"
 #include "core/serializers/counter.hpp"
 #include "gtest/gtest.h"
@@ -11,6 +12,7 @@
 using namespace fetch::network;
 using namespace fetch::crypto;
 using namespace fetch::muddle;
+using namespace fetch::dkg;
 using namespace fetch::dkg::rbc;
 
 using Prover         = fetch::crypto::Prover;
@@ -98,8 +100,20 @@ int main()
         RBC rbc2{muddle2.AsEndpoint(), muddle_certificate_2->identity().identifier(), cabinet, threshold};
         RBC rbc3{muddle3.AsEndpoint(), muddle_certificate_3->identity().identifier(), cabinet, threshold};
 
-        //rbc0 sends a broacast
-        rbc0.sendRBroadcast("hello");
+        //rbc0 sends a broadcast
+        std::unordered_set<DKGMessage::CabinetId> complaint;
+        complaint.insert("Node 1");
+        DKGEnvelop env{Complaints{complaint, "signature"}};
+
+        // Serialise the envelop
+        fetch::serializers::SizeCounter<fetch::serializers::ByteArrayBuffer> env_counter;
+        env_counter << env;
+
+        fetch::serializers::ByteArrayBuffer env_serialiser;
+        env_serialiser.Reserve(env_counter.size());
+        env_serialiser << env;
+
+        rbc0.sendRBroadcast(env_serialiser.data());
 
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     }
