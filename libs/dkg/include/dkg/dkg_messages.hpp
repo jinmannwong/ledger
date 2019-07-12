@@ -3,7 +3,7 @@
 #include "core/byte_array/const_byte_array.hpp"
 #include "core/serializers/byte_array.hpp"
 #include "core/serializers/byte_array_buffer.hpp"
-#include "dkg/mcl_serializers.hpp"
+#include "mcl/bn256.hpp"
 #include "network/muddle/rpc/client.hpp"
 
 namespace fetch {

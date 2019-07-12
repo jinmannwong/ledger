@@ -3,11 +3,14 @@
 #include "core/serializers/counter.hpp"
 #include "gtest/gtest.h"
 
+
 using namespace fetch;
 using namespace fetch::dkg;
 
 TEST(dkg_messages, coefficients) {
-    std::vector<DKGMessage::Coefficient> coefficients;
+    mcl::bn256::initPairing();
+    std::vector<mcl::bn256::G2> coefficients (1);
+    coefficients[0].clear();
     Coefficients coeff{1, coefficients, "signature"};
 
     fetch::serializers::ByteArrayBuffer serialiser {coeff.serialize()};
@@ -23,7 +26,12 @@ TEST(dkg_messages, coefficients) {
 }
 
 TEST(dkg_messages, shares) {
+    mcl::bn256::initPairing();
     std::unordered_map<DKGMessage::CabinetId, std::pair<DKGMessage::Share, DKGMessage::Share>> shares;
+    DKGMessage::Share x, xprime;
+    x.setRand();
+    xprime.setRand();
+    shares.insert({"0", {x, xprime}});
     Shares shareMessage{1, shares, "signature"};
 
     fetch::serializers::ByteArrayBuffer serialiser {shareMessage.serialize()};

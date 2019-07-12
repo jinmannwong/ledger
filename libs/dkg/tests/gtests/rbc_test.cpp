@@ -33,7 +33,7 @@ ProverPtr CreateNewCertificate()
     return certificate;
 }
 
-int main()
+TEST(rbc, trial)
 {
     std::size_t number_of_threads = 1;
     uint16_t muddle_port_0 = 8000;
