@@ -57,6 +57,27 @@ namespace dkg {
         rbc_.sendRBroadcast(serialiser.data());
     }
 
+    void DKG::onDKGMessage(MuddleAddress const &from, DKGEnvelop const &envelop) {
+        auto msg_ptr = envelop.getMessage();
+        uint32_t senderIndex {cabinetIndex(from)};
+        switch (msg_ptr->getType()) {
+            case DKGMessage::MessageType::COEFFICIENT:
+                FETCH_LOG_TRACE(LOGGING_NAME, "Node: ", cabinet_index_, " received RBroadcast from node ", senderIndex);
+                onNewCoefficients(std::dynamic_pointer_cast<Coefficients>(msg_ptr), from);
+                break;
+            case DKGMessage::MessageType::SHARE:
+                FETCH_LOG_TRACE(LOGGING_NAME, "Node: ", cabinet_index_, " received REcho from node ", senderIndex);
+                onExposedShares(std::dynamic_pointer_cast<Shares>(msg_ptr), from);
+                break;
+            case DKGMessage::MessageType::COMPLAINT:
+                FETCH_LOG_TRACE(LOGGING_NAME, "Node: ", cabinet_index_, " received RReady from node ", senderIndex);
+                onComplaints(std::dynamic_pointer_cast<Complaints>(msg_ptr), from);
+                break;
+            default:
+                FETCH_LOG_ERROR(LOGGING_NAME, "Node: ", cabinet_index_, " can not process payload from node ", senderIndex);
+        }
+    }
+
     void DKG::broadcastShares() {
         std::vector<bn::Fr> a_i(threshold_ + 1, zeroFr_), b_i(threshold_ + 1, zeroFr_);
 
@@ -90,8 +111,8 @@ namespace dkg {
             computeShares(s_ij[cabinet_index_][j], sprime_ij[cabinet_index_][j], a_i, b_i, j);
             if (j != cabinet_index_) {
                 std::pair<bn::Fr, bn::Fr> shares {s_ij[cabinet_index_][j], sprime_ij[cabinet_index_][j]};
-                //rpc_client_.CallSpecificAddress(cab_i, RPC_DKG_BEACON,
-                                                //DkgRpcProtocol::SUBMIT_SHARE, address_, shares);
+                rpc_client_.CallSpecificAddress(cab_i, RPC_DKG_BEACON,
+                                                DkgRpcProtocol::SUBMIT_SHARE, address_, shares);
             }
             ++j;
         }
@@ -193,41 +214,41 @@ namespace dkg {
         }
     }
 
-    /*
-    void Committee::onNewCoefficients(const fetch::consensus::pb::Broadcast_Coefficients &coefficients,
-                                      const std::string &from_id) {
-        uint32_t from_index{node_.miner_index(from_id)};
-        if (coefficients.phase() == static_cast<uint64_t>(State::WAITING_FOR_SHARE)) {
+
+    void DKG::onNewCoefficients(const std::shared_ptr<Coefficients> &msg_ptr,
+                                      const MuddleAddress &from_id) {
+        uint32_t from_index{cabinetIndex(from_id)};
+        if (msg_ptr -> getPhase() == static_cast<uint64_t>(State::WAITING_FOR_SHARE)) {
             bn::G2 zero;
             zero.clear();
             for (uint32_t ii = 0; ii <= threshold_; ++ii) {
                 if (C_ik[from_index][ii] == zero) {
-                    C_ik[from_index][ii].setStr(coefficients.coefficients(ii));
+                    C_ik[from_index][ii].setStr((msg_ptr->getCoefficients())[ii]);
                 }
             }
-            ++C_ik_received;
-            if ((state_ == State::WAITING_FOR_SHARE) and (C_ik_received.load() == committee_size_ - 1) and
-                (shares_received.load()) == committee_size_ - 1) {
+            msg_counter_.inc(MsgCounter::Message::INITIAL_COEFFICIENT);
+            if ((state_ == State::WAITING_FOR_SHARE) and (msg_counter_.count(MsgCounter::Message::INITIAL_SHARE) == cabinet_.size() - 1)
+                and (msg_counter_.count(MsgCounter::Message::INITIAL_COEFFICIENT)) == cabinet_.size() - 1) {
                 broadcastComplaints();
             }
-        } else if (coefficients.phase() == static_cast<uint64_t>(State::WAITING_FOR_QUAL_SHARES)) {
+        } else if (msg_ptr -> phase() == static_cast<uint64_t>(State::WAITING_FOR_QUAL_SHARES)) {
             bn::G2 zero;
             zero.clear();
             for (uint32_t ii = 0; ii <= threshold_; ++ii) {
                 if (A_ik[from_index][ii] == zero) {
-                    A_ik[from_index][ii].setStr(coefficients.coefficients(ii));
+                    A_ik[from_index][ii].setStr((msg_ptr->getCoefficients())[ii]);
                 }
             }
-            ++A_ik_received;
-            if ((state_ == State::WAITING_FOR_QUAL_SHARES) and (A_ik_received.load() == committee_size_ - 1)) {
+            msg_counter_.inc(MsgCounter::Message::QUAL_COEFFICIENT);
+            if ((state_ == State::WAITING_FOR_QUAL_SHARES) and (msg_counter_.count(MsgCounter::Message::QUAL_COEFFICIENT) == cabinet_.size() - 1)) {
                 broadcastQUALComplaints();
             }
         }
     }
 
     void
-    Committee::onComplaints(const fetch::consensus::pb::Broadcast_Complaints &complaint, const std::string &from_id) {
-        uint32_t from_index{node_.miner_index(from_id)};
+    DKG::onComplaints(const std::shared_ptr<Complaints> &msg_ptr, const MuddleAddress &from_id) {
+        uint32_t from_index{cabinetIndex(from_id)};
         std::lock_guard<std::mutex> lock{mutex_};
         // Check if we have received a complaints message from this node before and if not log that we received
         // a complaint message
@@ -238,8 +259,8 @@ namespace dkg {
             return;
         }
 
-        std::unordered_set<std::string> complaints_from_sender;
-        for (auto ii = 0; ii < complaint.nodes_size(); ++ii) {
+        for (const auto &bad_node : msg_ptr->getComplaints()) {
+            /* Obsolete as the message now contains a set
             // Keep track of the nodes which are included in complaint. If there are duplicates then we add the sender
             // to complaints
             if (complaints_from_sender.find(complaint.nodes(ii)) != complaints_from_sender.end()) {
@@ -248,26 +269,28 @@ namespace dkg {
                 complaints_from_sender.insert(complaint.nodes(ii));
                 ++complaints_counter[complaint.nodes(ii)];
             }
+             */
+            ++complaints_counter[bad_node];
             // If a node receives complaint against itself then store in complaints from
             // for answering later
-            if (complaint.nodes(ii) == node_.id()) {
+            if (bad_node == address_) {
                 complaints_from.insert(from_id);
             }
         }
-        ++complaints_received_counter;
+        msg_counter_.inc(MsgCounter::Message::COMPLAINT);
         if (state_ == State::WAITING_FOR_COMPLAINTS and
-            (complaints_received_counter.load() == committee_size_ - 1)) {
+            (msg_counter_.count(MsgCounter::Message::COMPLAINT) == cabinet_.size() - 1)) {
             // Add miners which did not send a complaint to complaints (redundant for now but will be necessary when
             // we do not wait for a message from everyone)
-            auto miner_it = node_.miners().begin();
+            auto miner_it = cabinet_.begin();
             for (uint32_t ii = 0; ii < complaints_received.size(); ++ii) {
-                if (!complaints_received[ii] and ii != node_.miner_index()) {
+                if (!complaints_received[ii] and ii != cabinet_index_) {
                     complaints.insert(*miner_it);
                 }
                 ++miner_it;
             }
             //All miners who have received over t complaints are also disqualified
-            auto miner_iter{node_.miners().begin()};
+            auto miner_iter{cabinet_.begin()};
             for (const auto &node_complaints : complaints_counter) {
                 if (node_complaints.second > threshold_) {
                     complaints.insert(*miner_iter);
@@ -278,30 +301,29 @@ namespace dkg {
         }
     }
 
-    void Committee::onExposedShares(const fetch::consensus::pb::Broadcast_Shares &shares, const std::string &from_id) {
+    void DKG::onExposedShares(const fetch::consensus::pb::Broadcast_Shares &shares, const std::string &from_id) {
         uint64_t phase{shares.phase()};
         if (phase == static_cast<uint64_t>(State::WAITING_FOR_COMPLAINT_ANSWERS)) {
-            logger.info("complaint answer {} from {}", node_.id(), from_id);
+            FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " received complaint answer from ", cabinetIndex(from_id));
             onComplaintsAnswer(shares, from_id);
         } else if (phase == static_cast<uint64_t>(State::WAITING_FOR_QUAL_COMPLAINTS)) {
-            logger.info("QUAL complaint {} from {}", node_.id(), from_id);
+            FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " received QUAL complaint from ", cabinetIndex(from_id));
             onQUALComplaints(shares, from_id);
         } else if (phase == static_cast<uint64_t>(State::WAITING_FOR_RECONSTRUCTION_SHARES)) {
-            logger.info("Reconstruction shares {} from {}", node_.id(), from_id);
+            FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " received reconstruction share from ", cabinetIndex(from_id));
             onReconstructionShares(shares, from_id);
         }
     }
 
     void
-    Committee::onComplaintsAnswer(const fetch::consensus::pb::Broadcast_Shares &answer, const std::string &from_id) {
-        uint32_t from_index{node_.miner_index(from_id)};
-        uint32_t rank{node_.miner_index()};
+    DKG::onComplaintsAnswer(const fetch::consensus::pb::Broadcast_Shares &answer, const std::string &from_id) {
+        uint32_t from_index{cabinetIndex(from_id)};
         // If a fields are not all complete we complain against the sender and do not process
         if (answer.first_size() != answer.second_size() or answer.first_size() != answer.reporter_size()) {
             complaints.insert(from_id);
         } else {
             for (auto ii = 0; ii < answer.first_size(); ++ii) {
-                uint32_t reporter_index{node_.miner_index(answer.reporter(ii))};
+                uint32_t reporter_index{cabinetIndex(answer.reporter(ii))};
                 //Verify shares received
                 bn::Fr s, sprime;
                 bn::G2 lhsG, rhsG;
@@ -311,35 +333,35 @@ namespace dkg {
                 rhsG.clear();
                 s.setStr(answer.first(ii));
                 sprime.setStr(answer.second(ii));
-                rhsG = fetch::consensus::computeRHS(from_index, C_ik[reporter_index]);
-                lhsG = fetch::consensus::computeLHS(G, H, s, sprime);
+                rhsG = computeRHS(from_index, C_ik[reporter_index]);
+                lhsG = computeLHS(G, H, s, sprime);
                 if (lhsG != rhsG) {
-                    logger.error("node {} verification for node {} complaint answer failed", node_.id(), from_index);
+                    FETCH_LOG_WARN(LOGGING_NAME, "Node: ", cabinet_index_, " verification for node ", cabinetIndex(from_id), " complaint answer failed");
                     complaints.insert(from_id);
                 } else {
-                    logger.info("node {} verification for node {} complaint answer succeeded", node_.id(), from_index);
-                    if (reporter_index == rank) {
-                        s_ij[from_index][rank] = s;
-                        sprime_ij[from_index][rank] = sprime;
+                    FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " verification for node ", cabinetIndex(from_id), " complaint answer succeeded");
+                    if (reporter_index == cabinet_index_) {
+                        s_ij[from_index][cabinet_index_] = s;
+                        sprime_ij[from_index][cabinet_index_] = sprime;
                     }
                 }
             }
         }
         complaint_answers_received[from_index] = true;
-        ++complaint_answers_received_counter;
+        msg_counter_.inc(MsgCounter::Message::COMPLAINT_ANSWER);
         if (state_ == State::WAITING_FOR_COMPLAINT_ANSWERS and
-            (complaint_answers_received_counter.load() == committee_size_ - 1)) {
+            (msg_counter_.count(MsgCounter::Message::COMPLAINT) == cabinet_.size() - 1)) {
             // Add miners which did not send a complaint to complaints (redundant for now but will be necessary when
             // we do not wait for a message from everyone)
-            auto miner_it = node_.miners().begin();
+            auto miner_it = cabinet_.begin();
             for (uint32_t ii = 0; ii < complaint_answers_received.size(); ++ii) {
-                if (!complaint_answers_received[ii] and ii != node_.miner_index()) {
+                if (!complaint_answers_received[ii] and ii != cabinet_index_) {
                     complaints.insert(*miner_it);
                 }
                 ++miner_it;
             }
             if (buildQual()) {
-                logger.info("Node {} build QUAL of size {}", node_.id(), QUAL.size());
+                FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " build QUAL of size ", QUAL.size());
                 computeSecretShare();
             } else {
                 //TODO: procedure failed for this node
@@ -347,61 +369,60 @@ namespace dkg {
         }
     }
 
-    bool Committee::buildQual() {
+       */
+
+    bool DKG::buildQual() {
         //Altogether, complaints consists of
         // 1. Nodes who did not send, sent too many or sent duplicate complaints
         // 2. Nodes which received over t complaints
         // 3. Nodes who did not complaint answers
         // 4. Complaint answers which were false
-        for (const auto &node : node_.miners()) {
+        for (const auto &node : cabinet_) {
             if (complaints.find(node) == complaints.end()) {
                 QUAL.insert(node);
             }
         }
-        if (QUAL.find(node_.id()) == QUAL.end() or QUAL.size() <= threshold_) {
-            if (QUAL.find(node_.id()) == QUAL.end()) {
-                logger.error("Node {} build QUAL failed as not in QUAL", node_.id());
+        if (QUAL.find(address_) == QUAL.end() or QUAL.size() <= threshold_) {
+            if (QUAL.find(address_) == QUAL.end()) {
+                FETCH_LOG_WARN(LOGGING_NAME, "Node: ", cabinet_index_, " build QUAL failed as not in QUAL");
             } else {
-                logger.error("Node {} build QUAL failed as size {} less than threshold {}", node_.id(), QUAL.size(),
-                             threshold_);
+                FETCH_LOG_WARN(LOGGING_NAME, "Node: ", cabinet_index_, " build QUAL failed as size ", QUAL.size(),
+                               " less than threshold ", threshold_);
             }
             return false;
         }
         return true;
     }
 
-    void Committee::computeSecretShare() {
+    void DKG::computeSecretShare() {
         // 3. Each party $P_i$ sets their share of the secret as
         //    $x_i = \sum_{j \in QUAL} s_{ji} \bmod q$ and the value
         //    $x\prime_i = \sum_{j \in QUAL} s\prime_{ji} \bmod q$.
         x_i = 0;
         xprime_i = 0;
-        uint32_t rank = node_.miner_index();
         for (const auto &iq : QUAL) {
-            uint32_t iq_index = node_.miner_index(iq);
-            bn::Fr::add(x_i, x_i, s_ij[iq_index][rank]);
-            bn::Fr::add(xprime_i, xprime_i, sprime_ij[iq_index][rank]);
+            uint32_t iq_index = cabinetIndex(iq);
+            bn::Fr::add(x_i, x_i, s_ij[iq_index][cabinet_index_]);
+            bn::Fr::add(xprime_i, xprime_i, sprime_ij[iq_index][cabinet_index_]);
         }
         // 4. Each party $i \in QUAL$ exposes $y_i = g^{z_i} \bmod p$
         //    via Feldman-VSS:
         // (a) Each party $P_i$, $i \in QUAL$, broadcasts $A_{ik} =
         //     g^{a_{ik}} \bmod p$ for $k = 0, \ldots, t$.
-        fetch::consensus::pb::Broadcast msg;
-        auto *coefficients{msg.mutable_coefficients()};
-        coefficients->set_phase(static_cast<uint64_t>(State::WAITING_FOR_QUAL_SHARES));
-        msg.set_signature("signature");
+
+        std::vector<bn::G2> coefficients;
         for (size_t k = 0; k <= threshold_; k++) {
-            A_ik[rank][k] = g__a_i[k];
-            coefficients->add_coefficients(A_ik[rank][k].getStr());
+            A_ik[cabinet_index_][k] = g__a_i[k];
+            coefficients.push_back(A_ik[cabinet_index_][k]);
         }
-        node_.sendBroadcast(msg);
+        sendBroadcast(DKGEnvelop{Coefficients{static_cast<uint8_t>(State::WAITING_FOR_QUAL_SHARES), coefficients, "signature"}});
         state_ = State::WAITING_FOR_QUAL_SHARES;
         complaints.clear();
     }
 
-    void Committee::onQUALComplaints(const fetch::consensus::pb::Broadcast_Shares &shares, const std::string &from_id) {
-        uint32_t from_index{node_.miner_index(from_id)};
-        uint32_t rank{node_.miner_index()};
+
+    void DKG::onQUALComplaints(const fetch::consensus::pb::Broadcast_Shares &shares, const std::string &from_id) {
+        uint32_t from_index{cabinetIndex(from_id)};
         // If not all fields are complete we complain against the sender
         if (shares.first_size() != shares.second_size() or shares.first_size() != shares.reporter_size()) {
             complaints.insert(from_id);
@@ -419,14 +440,14 @@ namespace dkg {
                     s.setStr(shares.first(ii));
                     sprime.setStr(shares.second(ii));
                     // check equation (4)
-                    lhs = fetch::consensus::computeLHS(G, H, s, sprime);
-                    rhs = fetch::consensus::computeRHS(node_.miner_index(shares.reporter(ii)), C_ik[from_index]);
+                    lhs = computeLHS(G, H, s, sprime);
+                    rhs = computeRHS(cabinetIndex(shares.reporter(ii)), C_ik[from_index]);
                     if (lhs != rhs) {
                         complaints.insert(from_id);
                     }
                     // check equation (5)
                     bn::G2::mul(lhs, G, s);//G^s
-                    rhs = fetch::consensus::computeRHS(rank, A_ik[from_index]);
+                    rhs = computeRHS(cabinet_index_, A_ik[from_index]);
                     if (lhs != rhs) {
                         complaints.insert(shares.reporter(ii));
                     } else {
@@ -440,32 +461,32 @@ namespace dkg {
             // Add QUAL members which did not send a complaint to complaints (redundant for now but will be necessary when
             // we do not wait for a message from everyone)
             for (const auto &iq : QUAL) {
-                if (iq != node_.id() and QUAL_complaints_received.find(iq) == QUAL_complaints_received.end()) {
+                if (iq != address_ and QUAL_complaints_received.find(iq) == QUAL_complaints_received.end()) {
                     complaints.insert(iq);
                 }
             }
 
             if (complaints.size() > threshold_) {
-                logger.error("Node {} protocol has failed: complaints size {}", node_.id(), complaints.size());
+                FETCH_LOG_WARN(LOGGING_NAME, "Node: ", cabinet_index_, " protocol has failed: complaints size ", complaints.size());
                 return;
-            } else if (complaints.find(node_.id()) != complaints.end()) {
-                logger.error("Node {} protocol has failed: in complaints", node_.id());
+            } else if (complaints.find(address_) != complaints.end()) {
+                FETCH_LOG_WARN(LOGGING_NAME, "Node: ", cabinet_index_, " protocol has failed: in complaints");
                 return;
             }
-            assert(QUAL.find(node_.id()) != QUAL.end());
+            assert(QUAL.find(address_) != QUAL.end());
             broadcastReconstructionShares();
         }
     }
 
-    void Committee::onReconstructionShares(const fetch::consensus::pb::Broadcast_Shares &shares,
+    void DKG::onReconstructionShares(const fetch::consensus::pb::Broadcast_Shares &shares,
                                            const std::string &from_id) {
         //Return if the sender is in complaints, or not in QUAL
         if (complaints.find(from_id) != complaints.end() or QUAL.find(from_id) == QUAL.end()) {
             return;
         }
-        uint32_t from_index{node_.miner_index(from_id)};
+        uint32_t from_index{cabinetIndex(from_id)};
         for (auto ii = 0; ii < shares.first_size(); ++ii) {
-            uint32_t victim_index{node_.miner_index(shares.reporter(ii))};
+            uint32_t victim_index{cabinetIndex(shares.reporter(ii))};
             assert(complaints.find(shares.reporter(ii)) != complaints.end());
             bn::G2 lhs, rhs;
             bn::Fr s, sprime;
@@ -476,8 +497,8 @@ namespace dkg {
 
             s.setStr(shares.first(ii));
             sprime.setStr(shares.second(ii));
-            lhs = fetch::consensus::computeLHS(G, H, s, sprime);
-            rhs = fetch::consensus::computeRHS(from_index, C_ik[victim_index]);
+            lhs = computeLHS(G, H, s, sprime);
+            rhs = computeRHS(from_index, C_ik[victim_index]);
             // check equation (4)
             if (lhs == rhs and reconstruction_shares.at(shares.reporter(ii)).second[from_index] == zeroFr_) {
                 std::lock_guard<std::mutex> lock{mutex_};
@@ -485,11 +506,11 @@ namespace dkg {
                 reconstruction_shares.at(shares.reporter(ii)).second[from_index] = s;
             }
         }
-        ++reconstruction_shares_received;
+        msg_counter_.inc(MsgCounter::Message::RECONSTRUCTION_SHARE);
         if (state_ == State::WAITING_FOR_RECONSTRUCTION_SHARES and
-            reconstruction_shares_received.load() == QUAL.size() - complaints.size() - 1) {
+                    msg_counter_.count(MsgCounter::Message::RECONSTRUCTION_SHARE) == QUAL.size() - complaints.size() - 1) {
             if (!runReconstruction()) {
-                logger.error("Node {} DKG failed due to reconstruction failure", node_.id());
+                FETCH_LOG_WARN(LOGGING_NAME, "Node: ", cabinet_index_, " DKG failed due to reconstruction failure");
             } else {
                 computePublicKeys();
                 complaints.clear();
@@ -497,27 +518,28 @@ namespace dkg {
         }
     }
 
-    bool Committee::runReconstruction() {
+
+    bool DKG::runReconstruction() {
         std::vector<std::vector<bn::Fr>> a_ik;
-        init(a_ik, committee_size_, threshold_ + 1);
+        init(a_ik, cabinet_.size(), threshold_ + 1);
         for (const auto &in : reconstruction_shares) {
             std::vector<std::size_t> parties{in.second.first};
             std::vector<bn::Fr> shares{in.second.second};
             if (parties.size() <= threshold_) {
                 // Do not have enough good shares to be able to do reconstruction
-                logger.error("Node {} reconstruction for {} failed with party size {}", node_.id(), in.first,
-                             parties.size());
+                FETCH_LOG_WARN(LOGGING_NAME, "Node: ", cabinet_index_, " reconstruction for ", in.first,
+                        " failed with party size ", parties.size());
                 return false;
             }
             // compute $z_i$ using Lagrange interpolation (without corrupted parties)
-            uint32_t victim_index{node_.miner_index(in.first)};
-            z_i[victim_index] = fetch::consensus::computeZi(in.second.first, in.second.second);
+            uint32_t victim_index{cabinetIndex(in.first)};
+            z_i[victim_index] = computeZi(in.second.first, in.second.second);
             std::vector<bn::Fr> points(parties.size(), 0), shares_f(parties.size(), 0);
             for (size_t k = 0; k < parties.size(); k++) {
                 points[k] = parties[k] + 1;  // adjust index in computation
                 shares_f[k] = shares[parties[k]];
             }
-            a_ik[victim_index] = fetch::consensus::interpolatePolynom(points, shares_f);
+            a_ik[victim_index] = interpolatePolynom(points, shares_f);
             // compute $A_{ik} = g^{a_{ik}} \bmod p$
             for (size_t k = 0; k <= threshold_; k++) {
                 bn::G2::mul(A_ik[victim_index][k], G, a_ik[victim_index][k]);
@@ -526,32 +548,30 @@ namespace dkg {
         return true;
     }
 
-    void Committee::computePublicKeys() {
-        logger.info("Node {} compute public keys", node_.id());
+    void DKG::computePublicKeys() {
+        FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " compute public keys");
         // For all parties in $QUAL$, set $y_i = A_{i0} = g^{z_i} \bmod p$.
         for (const auto &iq : QUAL) {
-            uint32_t it{node_.miner_index(iq)};
+            uint32_t it{cabinetIndex(iq)};
             y_i[it] = A_ik[it][0];
         }
         // Compute $y = \prod_{i \in QUAL} y_i \bmod p$
         y_.clear();
         for (const auto &iq : QUAL) {
-            uint32_t it{node_.miner_index(iq)};
+            uint32_t it{cabinetIndex(iq)};
             bn::G2::add(y_, y_, y_i[it]);
         }
         // Compute public verification keys $v_j = \prod_{i \in QUAL} \prod_{k=0}^t (A_{ik})^{j^k} \bmod p$
         for (const auto &jq : QUAL) {
-            uint32_t jt{node_.miner_index(jq)};
+            uint32_t jt{cabinetIndex(jq)};
             for (const auto &iq : QUAL) {
-                uint32_t it{node_.miner_index(iq)};
+                uint32_t it{cabinetIndex(iq)};
                 bn::G2::add(v_i[jt], v_i[jt], A_ik[it][0]);
-                fetch::consensus::updateRHS(jt, v_i[jt], A_ik[it]);
+                updateRHS(jt, v_i[jt], A_ik[it]);
             }
         }
         DKGComplete = true;
     }
-
-     */
 
     uint32_t DKG::cabinetIndex(const MuddleAddress &other_address) const {
         return static_cast<uint32_t>(std::distance(cabinet_.begin(), cabinet_.find(other_address)));

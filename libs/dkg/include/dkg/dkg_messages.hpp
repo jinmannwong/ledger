@@ -3,7 +3,8 @@
 #include "core/byte_array/const_byte_array.hpp"
 #include "core/serializers/byte_array.hpp"
 #include "core/serializers/byte_array_buffer.hpp"
-#include "mcl/bn256.hpp"
+//#include "mcl/bn256.hpp"
+#include "dkg/mcl_serializers.hpp"
 #include "network/muddle/rpc/client.hpp"
 
 namespace fetch {
@@ -56,12 +57,15 @@ namespace dkg {
         explicit Coefficients(uint8_t phase, std::vector<Coefficient> coeff, Signature sig):
             DKGMessage{MessageType::COEFFICIENT, std::move(sig)}, phase_{phase}, coefficients_{std::move(coeff)} {};
         DKGSerializer serialize() const override {
+            DKGSerializer serializer;
+            /*
             std::vector<std::string> coeff_str;
             for (const auto &coeff : coefficients_) {
                 coeff_str.push_back(coeff.getStr());
             }
-            DKGSerializer serializer;
             serializer << phase_ << coeff_str << signature_;
+             */
+            serializer << phase_ << coefficients_ << signature_;
             return serializer;
         }
         uint8_t getPhase() const {
