@@ -188,6 +188,12 @@ void DkgService::SubmitSignatureShare(uint64_t round, crypto::bls::Id const &id,
  * @param entropy The output entropy value
  * @return The associated status result for the operation
  */
+
+void DkgService::SubmitShare(MuddleAddress const &address, std::pair<bn::Fr, bn::Fr> const &shares)
+{
+   //dkg_.onNewShares(address, shares);
+}
+
 DkgService::Status DkgService::GenerateEntropy(Digest block_digest, uint64_t block_number,
                                                uint64_t &entropy)
 {

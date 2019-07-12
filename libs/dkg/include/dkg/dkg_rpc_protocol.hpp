@@ -34,6 +34,7 @@ public:
   {
     REQUEST_SECRET,
     SUBMIT_SIGNATURE,
+    SUBMIT_SHARE,
   };
 
   // Construction / Destruction

@@ -29,6 +29,7 @@
 #include "ledger/consensus/entropy_generator_interface.hpp"
 #include "network/muddle/rpc/client.hpp"
 #include "network/muddle/rpc/server.hpp"
+#include <mcl/bn256.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -37,6 +38,8 @@
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+
+namespace bn = mcl::bn256;
 
 namespace fetch {
 namespace muddle {
@@ -143,6 +146,8 @@ public:
   void SubmitSignatureShare(uint64_t round, crypto::bls::Id const &id,
                             crypto::bls::PublicKey const &public_key,
                             crypto::bls::Signature const &signature);
+
+  void SubmitShare(MuddleAddress const &address, std::pair<bn::Fr, bn::Fr> const &shares);
   /// @}
 
   /// @name Entropy Generator

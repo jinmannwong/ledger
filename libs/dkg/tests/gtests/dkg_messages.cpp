@@ -5,7 +5,6 @@
 
 using namespace fetch;
 using namespace fetch::dkg;
-using namespace fetch::crypto::bls;
 
 TEST(dkg_messages, coefficients) {
     std::vector<DKGMessage::Coefficient> coefficients;
@@ -17,7 +16,7 @@ TEST(dkg_messages, coefficients) {
     Coefficients coeff1{serialiser1};
 
     for (auto ii = 0; ii < coeff.getCoefficients().size(); ++ii) {
-        EXPECT_EQ(PublicKeyIsEqual(coeff1.getCoefficients()[ii], coeff.getCoefficients()[ii]), true);
+        EXPECT_EQ(coeff1.getCoefficients()[ii], coeff.getCoefficients()[ii]);
     }
     EXPECT_EQ(coeff1.getPhase(), coeff.getPhase());
     EXPECT_EQ(coeff1.getSignature(), coeff.getSignature());
@@ -34,7 +33,7 @@ TEST(dkg_messages, shares) {
 
     for (const auto &i_share : shareMessage.getShares()) {
         EXPECT_EQ(shareMessage1.getShares().find(i_share.first) != shareMessage1.getShares().end(), true);
-        EXPECT_EQ(blsSecretKeyIsEqual(&i_share.second.first, &shareMessage1.getShares().at(i_share.first).first), true);
+        EXPECT_EQ(i_share.second.first, shareMessage1.getShares().at(i_share.first).first);
     }
     EXPECT_EQ(shareMessage1.getPhase(), shareMessage.getPhase());
     EXPECT_EQ(shareMessage1.getSignature(), shareMessage.getSignature());
