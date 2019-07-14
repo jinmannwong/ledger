@@ -14,10 +14,10 @@ namespace dkg {
 
     class DKGMessage {
     public:
-        using Signature = byte_array::ConstByteArray;
+        using MsgSignature = byte_array::ConstByteArray;
         using MuddleAddress  = byte_array::ConstByteArray;
-        using Coefficient = mcl::bn256::G2;
-        using Share = mcl::bn256::Fr;
+        using Coefficient = std::string;
+        using Share = std::string;
         using CabinetId = MuddleAddress;
 
         enum class MessageType : uint8_t {
@@ -26,105 +26,81 @@ namespace dkg {
             COMPLAINT
         };
 
-        MessageType getType() const {
+        MessageType Type() const {
             return type_;
         }
-        Signature getSignature() const {
+        MsgSignature Signature() const {
             return signature_;
         }
-        virtual DKGSerializer serialize() const = 0;
+        virtual DKGSerializer Serialize() const = 0;
     protected:
         const MessageType type_;
-        Signature signature_;
+        MsgSignature signature_;
 
         explicit DKGMessage(MessageType type): type_{type} {};
-        explicit DKGMessage(MessageType type, Signature sig): type_{type}, signature_{std::move(sig)} {};
+        explicit DKGMessage(MessageType type, MsgSignature sig): type_{type}, signature_{std::move(sig)} {};
     };
 
-    class Coefficients : public DKGMessage {
+    class CoefficientsMessage : public DKGMessage {
         uint8_t phase_;
         std::vector<Coefficient> coefficients_;
     public:
-        explicit Coefficients(DKGSerializer &serialiser): DKGMessage{MessageType::COEFFICIENT} {
-            std::vector<std::string> coeff_str;
-            serialiser >> phase_ >> coeff_str >> signature_;
-            for (const auto &str : coeff_str) {
-                Coefficient x;
-                x.setStr(str);
-                coefficients_.push_back(x);
-            }
+        explicit CoefficientsMessage(DKGSerializer &serialiser): DKGMessage{MessageType::COEFFICIENT} {
+            serialiser >> phase_ >> coefficients_ >> signature_;
         };
-        explicit Coefficients(uint8_t phase, std::vector<Coefficient> coeff, Signature sig):
+        explicit CoefficientsMessage(uint8_t phase, std::vector<Coefficient> coeff, MsgSignature sig):
             DKGMessage{MessageType::COEFFICIENT, std::move(sig)}, phase_{phase}, coefficients_{std::move(coeff)} {};
-        DKGSerializer serialize() const override {
+        DKGSerializer Serialize() const override {
             DKGSerializer serializer;
-            /*
-            std::vector<std::string> coeff_str;
-            for (const auto &coeff : coefficients_) {
-                coeff_str.push_back(coeff.getStr());
-            }
-            serializer << phase_ << coeff_str << signature_;
-             */
             serializer << phase_ << coefficients_ << signature_;
             return serializer;
         }
-        uint8_t getPhase() const {
+        uint8_t Phase() const {
             return phase_;
         }
-        const std::vector<Coefficient>& getCoefficients() const {
+        const std::vector<Coefficient>& Coefficients() const {
             return coefficients_;
         }
     };
 
-    class Shares : public DKGMessage {
+    class SharesMessage : public DKGMessage {
         uint8_t phase_;
         std::unordered_map<CabinetId, int> null_;
         std::unordered_map<CabinetId, std::pair<Share, Share>> shares_; ///< Shares for a particular committee member
     public:
-        explicit Shares(DKGSerializer &serialiser): DKGMessage{MessageType::SHARE} {
-            std::unordered_map<CabinetId, std::pair<std::string, std::string>> shares_temp;
-            serialiser >> phase_ >> shares_temp >> signature_;
-            for (const auto &temp : shares_temp) {
-                Share s_ij, sprime_ij;
-                s_ij.setStr(temp.second.first);
-                sprime_ij.setStr(temp.second.second);
-                shares_.insert({temp.first, {s_ij, sprime_ij}});
-            }
+        explicit SharesMessage(DKGSerializer &serialiser): DKGMessage{MessageType::SHARE} {
+            serialiser >> phase_ >> shares_ >> signature_;
         };
-        explicit Shares(uint8_t phase, std::unordered_map<CabinetId, std::pair<Share, Share>> shares,
-                Signature sig):
+        explicit SharesMessage(uint8_t phase, std::unordered_map<CabinetId, std::pair<Share, Share>> shares,
+                MsgSignature sig):
             DKGMessage{MessageType::SHARE, std::move(sig)}, phase_{phase}, shares_{std::move(shares)} {};
-        DKGSerializer serialize() const override {
-            std::unordered_map<CabinetId, std::pair<std::string, std::string>> shares_temp;
-            for (const auto &share : shares_) {
-                shares_temp.insert({share.first, {share.second.first.getStr(), share.second.second.getStr()}});
-            }
+        DKGSerializer Serialize() const override {
             DKGSerializer serializer;
-            serializer << phase_ << shares_temp << signature_;
+            serializer << phase_ << shares_ << signature_;
             return serializer;
         }
-        uint8_t getPhase() const {
+        uint8_t Phase() const {
             return phase_;
         }
-        const std::unordered_map<CabinetId, std::pair<Share, Share>>& getShares() const {
+        const std::unordered_map<CabinetId, std::pair<Share, Share>>& Shares() const {
             return shares_;
         }
     };
 
-    class Complaints : public DKGMessage {
+    class ComplaintsMessage : public DKGMessage {
         std::unordered_set<CabinetId> complaints_; ///< Committee members that you are complaining against
     public:
-        explicit Complaints(DKGSerializer &serialiser): DKGMessage{MessageType::COMPLAINT} {
+        explicit ComplaintsMessage(DKGSerializer &serialiser): DKGMessage{MessageType::COMPLAINT} {
             serialiser >> complaints_ >> signature_;
         };
-        explicit Complaints(std::unordered_set<CabinetId> complaints, Signature sig):
+        explicit ComplaintsMessage(std::unordered_set<CabinetId> complaints, MsgSignature sig):
             DKGMessage{MessageType::COMPLAINT, std::move(sig)}, complaints_{std::move(complaints)} {};
-        DKGSerializer  serialize() const override {
+        DKGSerializer  Serialize() const override {
             DKGSerializer serializer;
             serializer << complaints_ << signature_;
             return serializer;
         }
-        const std::unordered_set<CabinetId>& getComplaints() const {
+        const std::unordered_set<CabinetId>& Complaints() const {
             return complaints_;
         }
     };
@@ -135,22 +111,22 @@ namespace dkg {
 
     public:
         DKGEnvelop() = default;
-        explicit DKGEnvelop(const DKGMessage &msg): type_{msg.getType()}, serialisedMessage_{msg.serialize().data()} {};
+        explicit DKGEnvelop(const DKGMessage &msg): type_{msg.Type()}, serialisedMessage_{msg.Serialize().data()} {};
 
         template<typename T>
-        void serialize(T &serialiser) const {
+        void Serialize(T &serialiser) const {
             serialiser << (uint8_t) type_ << serialisedMessage_;
         }
 
         template<typename T>
-        void deserialize(T &serialiser) {
+        void Deserialize(T &serialiser) {
             uint8_t val;
             serialiser >> val;
             type_ = (MessageType) val;
             serialiser >> serialisedMessage_;
         }
 
-        std::shared_ptr<DKGMessage> getMessage() const;
+        std::shared_ptr<DKGMessage> Message() const;
 
     private:
         MessageType type_;
@@ -159,12 +135,12 @@ namespace dkg {
 
     template<typename T>
     inline void Serialize(T &serializer, DKGEnvelop const &env) {
-        env.serialize(serializer);
+        env.Serialize(serializer);
     }
 
     template<typename T>
     inline void Deserialize(T &serializer, DKGEnvelop &env) {
-        env.deserialize(serializer);
+        env.Deserialize(serializer);
     }
 
 }

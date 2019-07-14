@@ -8,61 +8,57 @@ using namespace fetch;
 using namespace fetch::dkg;
 
 TEST(dkg_messages, coefficients) {
-    mcl::bn256::initPairing();
-    std::vector<mcl::bn256::G2> coefficients (1);
-    coefficients[0].clear();
-    Coefficients coeff{1, coefficients, "signature"};
+    std::vector<std::string> coefficients;
+    coefficients.push_back("coeff1");
+    CoefficientsMessage coeff{1, coefficients, "signature"};
 
-    fetch::serializers::ByteArrayBuffer serialiser {coeff.serialize()};
+    fetch::serializers::ByteArrayBuffer serialiser {coeff.Serialize()};
 
     fetch::serializers::ByteArrayBuffer serialiser1(serialiser.data());
-    Coefficients coeff1{serialiser1};
+    CoefficientsMessage coeff1{serialiser1};
 
-    for (auto ii = 0; ii < coeff.getCoefficients().size(); ++ii) {
-        EXPECT_EQ(coeff1.getCoefficients()[ii], coeff.getCoefficients()[ii]);
+    for (auto ii = 0; ii < coeff.Coefficients().size(); ++ii) {
+        EXPECT_EQ(coeff1.Coefficients()[ii], coeff.Coefficients()[ii]);
     }
-    EXPECT_EQ(coeff1.getPhase(), coeff.getPhase());
-    EXPECT_EQ(coeff1.getSignature(), coeff.getSignature());
+    EXPECT_EQ(coeff1.Phase(), coeff.Phase());
+    EXPECT_EQ(coeff1.Signature(), coeff.Signature());
 }
 
 TEST(dkg_messages, shares) {
-    mcl::bn256::initPairing();
-    std::unordered_map<DKGMessage::CabinetId, std::pair<DKGMessage::Share, DKGMessage::Share>> shares;
-    DKGMessage::Share x, xprime;
-    x.setRand();
-    xprime.setRand();
-    shares.insert({"0", {x, xprime}});
-    Shares shareMessage{1, shares, "signature"};
+    std::unordered_map<DKGMessage::CabinetId, std::pair<std::string, std::string>> shares;
+    shares.insert({"0", {"s_ij", "sprime_ij"}});
 
-    fetch::serializers::ByteArrayBuffer serialiser {shareMessage.serialize()};
+    SharesMessage shareMessage{1, shares, "signature"};
+
+    fetch::serializers::ByteArrayBuffer serialiser {shareMessage.Serialize()};
 
     fetch::serializers::ByteArrayBuffer serialiser1(serialiser.data());
-    Shares shareMessage1{serialiser1};
+    SharesMessage shareMessage1{serialiser1};
 
-    for (const auto &i_share : shareMessage.getShares()) {
-        EXPECT_EQ(shareMessage1.getShares().find(i_share.first) != shareMessage1.getShares().end(), true);
-        EXPECT_EQ(i_share.second.first, shareMessage1.getShares().at(i_share.first).first);
+    for (const auto &i_share : shareMessage.Shares()) {
+        EXPECT_EQ(shareMessage1.Shares().find(i_share.first) != shareMessage1.Shares().end(), true);
+        EXPECT_EQ(i_share.second.first, shareMessage1.Shares().at(i_share.first).first);
     }
-    EXPECT_EQ(shareMessage1.getPhase(), shareMessage.getPhase());
-    EXPECT_EQ(shareMessage1.getSignature(), shareMessage.getSignature());
+    EXPECT_EQ(shareMessage1.Phase(), shareMessage.Phase());
+    EXPECT_EQ(shareMessage1.Signature(), shareMessage.Signature());
 }
 
 TEST(dkg_messages, complaints) {
     std::unordered_set<DKGMessage::CabinetId> complaints;
-    Complaints complaintMsg{complaints, "signature"};
+    ComplaintsMessage complaintMsg{complaints, "signature"};
 
-    fetch::serializers::ByteArrayBuffer serialiser {complaintMsg.serialize()};
+    fetch::serializers::ByteArrayBuffer serialiser {complaintMsg.Serialize()};
 
     fetch::serializers::ByteArrayBuffer serialiser1(serialiser.data());
-    Complaints complaintMsg1{serialiser1};
+    ComplaintsMessage complaintMsg1{serialiser1};
 
-    EXPECT_EQ(complaintMsg1.getComplaints(), complaintMsg.getComplaints());
-    EXPECT_EQ(complaintMsg1.getSignature(), complaintMsg.getSignature());
+    EXPECT_EQ(complaintMsg1.Complaints(), complaintMsg.Complaints());
+    EXPECT_EQ(complaintMsg1.Signature(), complaintMsg.Signature());
 }
 
 TEST(dkg_messages, envelope) {
     std::unordered_set<DKGMessage::CabinetId> complaints;
-    Complaints complaintMsg{complaints, "signature"};
+    ComplaintsMessage complaintMsg{complaints, "signature"};
 
     // Put into DKGEnvelop
     DKGEnvelop env{complaintMsg};
@@ -80,7 +76,7 @@ TEST(dkg_messages, envelope) {
     env_serialiser1 >> env1;
 
     // Check the message type of envelops match
-    EXPECT_EQ(env1.getMessage()->getType(), DKGMessage::MessageType::COMPLAINT);
-    EXPECT_EQ(env1.getMessage()->getSignature(), complaintMsg.getSignature());
-    EXPECT_EQ(std::dynamic_pointer_cast<Complaints>(env1.getMessage()) -> getComplaints(), complaintMsg.getComplaints());
+    EXPECT_EQ(env1.Message()->Type(), DKGMessage::MessageType::COMPLAINT);
+    EXPECT_EQ(env1.Message()->Signature(), complaintMsg.Signature());
+    EXPECT_EQ(std::dynamic_pointer_cast<ComplaintsMessage>(env1.Message()) -> Complaints(), complaintMsg.Complaints());
 }
