@@ -26,6 +26,7 @@ namespace dkg {
         using CabinetMembers = std::set<MuddleAddress>;
         using Endpoint       = muddle::MuddleEndpoint;
         using RBC = rbc::RBC;
+        using MsgShare = std::string;
 
         enum class State : uint8_t {
             INITIAL,
@@ -143,15 +144,15 @@ namespace dkg {
         void broadcastComplaintsAnswer();
         void broadcastQUALComplaints();
         void broadcastReconstructionShares();
-        void onNewShares(MuddleAddress from_id, std::pair<bn::Fr, bn::Fr> const &shares);
-        void onNewCoefficients(const std::shared_ptr<Coefficients> &coefficients,
+        void onNewShares(MuddleAddress from_id, std::pair<MsgShare, MsgShare> const &shares);
+        void onNewCoefficients(const std::shared_ptr<CoefficientsMessage> &coefficients,
                                const MuddleAddress &from_id);
-        void onComplaints(const std::shared_ptr<Complaints> &complaint, const MuddleAddress &from_id);
-        void onExposedShares(const std::shared_ptr<Shares> &shares, const MuddleAddress &from_id);
-        void onComplaintsAnswer(const std::shared_ptr<Shares> &answer, const MuddleAddress &from_id);
-        void onQUALComplaints(const std::shared_ptr<Shares> &shares, const MuddleAddress &from_id);
+        void onComplaints(const std::shared_ptr<ComplaintsMessage> &complaint, const MuddleAddress &from_id);
+        void onExposedShares(const std::shared_ptr<SharesMessage> &shares, const MuddleAddress &from_id);
+        void onComplaintsAnswer(const std::shared_ptr<SharesMessage> &answer, const MuddleAddress &from_id);
+        void onQUALComplaints(const std::shared_ptr<SharesMessage> &shares, const MuddleAddress &from_id);
         void
-        onReconstructionShares(const std::shared_ptr<Shares> &shares, const MuddleAddress &from_id);
+        onReconstructionShares(const std::shared_ptr<SharesMessage> &shares, const MuddleAddress &from_id);
 
         bool buildQual();
         void computeSecretShare();

@@ -121,7 +121,7 @@ TEST(rbc, trial)
         //rbc0 sends a broadcast
         std::unordered_set<DKGMessage::CabinetId> complaint;
         complaint.insert("Node 1");
-        DKGEnvelop env{Complaints{complaint, "signature"}};
+        DKGEnvelop env{ComplaintsMessage{complaint, "signature"}};
 
         // Serialise the envelop
         fetch::serializers::SizeCounter<fetch::serializers::ByteArrayBuffer> env_counter;

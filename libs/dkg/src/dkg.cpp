@@ -5,6 +5,8 @@
 namespace fetch {
 namespace dkg {
 
+    using MsgCoefficient = std::string;
+
     constexpr char const *LOGGING_NAME = "DKG";
     bn::G2 DKG::zeroG2_;
     bn::Fr DKG::zeroFr_;
@@ -53,25 +55,25 @@ namespace dkg {
 
     void DKG::sendBroadcast(DKGEnvelop const &env) {
         DKGSerializer serialiser;
-        env.serialize(serialiser);
-        rbc_.sendRBroadcast(serialiser.data());
+        env.Serialize(serialiser);
+        rbc_.SendRBroadcast(serialiser.data());
     }
 
     void DKG::onDKGMessage(MuddleAddress const &from, DKGEnvelop const &envelop) {
-        auto msg_ptr = envelop.getMessage();
+        auto msg_ptr = envelop.Message();
         uint32_t senderIndex {cabinetIndex(from)};
-        switch (msg_ptr->getType()) {
+        switch (msg_ptr->Type()) {
             case DKGMessage::MessageType::COEFFICIENT:
                 FETCH_LOG_TRACE(LOGGING_NAME, "Node: ", cabinet_index_, " received RBroadcast from node ", senderIndex);
-                onNewCoefficients(std::dynamic_pointer_cast<Coefficients>(msg_ptr), from);
+                onNewCoefficients(std::dynamic_pointer_cast<CoefficientsMessage>(msg_ptr), from);
                 break;
             case DKGMessage::MessageType::SHARE:
                 FETCH_LOG_TRACE(LOGGING_NAME, "Node: ", cabinet_index_, " received REcho from node ", senderIndex);
-                onExposedShares(std::dynamic_pointer_cast<Shares>(msg_ptr), from);
+                onExposedShares(std::dynamic_pointer_cast<SharesMessage>(msg_ptr), from);
                 break;
             case DKGMessage::MessageType::COMPLAINT:
                 FETCH_LOG_TRACE(LOGGING_NAME, "Node: ", cabinet_index_, " received RReady from node ", senderIndex);
-                onComplaints(std::dynamic_pointer_cast<Complaints>(msg_ptr), from);
+                onComplaints(std::dynamic_pointer_cast<ComplaintsMessage>(msg_ptr), from);
                 break;
             default:
                 FETCH_LOG_ERROR(LOGGING_NAME, "Node: ", cabinet_index_, " can not process payload from node ", senderIndex);
@@ -96,12 +98,12 @@ namespace dkg {
         // $P_i$ broadcasts $C_{ik} = g^{a_{ik}} h^{b_{ik}} \bmod p$
         // for $k = 0, \ldots, t$.
 
-        std::vector<bn::G2> coefficients;
+        std::vector<MsgCoefficient> coefficients;
         for (size_t k = 0; k <= threshold_; k++) {
             C_ik[cabinet_index_][k] = computeLHS(g__a_i[k], G, H, a_i[k], b_i[k]);
-            coefficients.push_back(C_ik[cabinet_index_][k]);
+            coefficients.push_back(C_ik[cabinet_index_][k].getStr());
         }
-        sendBroadcast(DKGEnvelop{Coefficients{static_cast<uint8_t>(State::WAITING_FOR_SHARE), coefficients, "signature"}});
+        sendBroadcast(DKGEnvelop{CoefficientsMessage{static_cast<uint8_t>(State::WAITING_FOR_SHARE), coefficients, "signature"}});
 
         // $P_i$ computes the shares $s_{ij} = f_i(j) \bmod q$,
         // $s\prime_{ij} = f\prime_i(j) \bmod q$ and
@@ -110,7 +112,7 @@ namespace dkg {
         for (auto &cab_i : cabinet_) {
             computeShares(s_ij[cabinet_index_][j], sprime_ij[cabinet_index_][j], a_i, b_i, j);
             if (j != cabinet_index_) {
-                std::pair<bn::Fr, bn::Fr> shares {s_ij[cabinet_index_][j], sprime_ij[cabinet_index_][j]};
+                std::pair<MsgShare, MsgShare> shares {s_ij[cabinet_index_][j].getStr(), sprime_ij[cabinet_index_][j].getStr()};
                 rpc_client_.CallSpecificAddress(cab_i, RPC_DKG_BEACON,
                                                 DkgRpcProtocol::SUBMIT_SHARE, address_, shares);
             }
@@ -139,17 +141,17 @@ namespace dkg {
             ++i;
         }
 
-        sendBroadcast(DKGEnvelop{Complaints{complaints_local, "signature"}});
+        sendBroadcast(DKGEnvelop{ComplaintsMessage{complaints_local, "signature"}});
         state_ = State::WAITING_FOR_COMPLAINTS;
     }
 
     void DKG::broadcastComplaintsAnswer() {
-        std::unordered_map<MuddleAddress, std::pair<bn::Fr, bn::Fr>> complaints_answer;
+        std::unordered_map<MuddleAddress, std::pair<MsgShare, MsgShare>> complaints_answer;
         for (const auto &reporter : complaints_from) {
             uint32_t from_index {cabinetIndex(reporter)};
-            complaints_answer.insert({reporter, {s_ij[cabinet_index_][from_index], sprime_ij[cabinet_index_][from_index]}});
+            complaints_answer.insert({reporter, {s_ij[cabinet_index_][from_index].getStr(), sprime_ij[cabinet_index_][from_index].getStr()}});
         }
-        sendBroadcast(DKGEnvelop{Shares{static_cast<uint64_t>(State::WAITING_FOR_COMPLAINT_ANSWERS), complaints_answer, "signature"}});
+        sendBroadcast(DKGEnvelop{SharesMessage{static_cast<uint64_t>(State::WAITING_FOR_COMPLAINT_ANSWERS), complaints_answer, "signature"}});
         state_ = State::WAITING_FOR_COMPLAINT_ANSWERS;
     }
 
@@ -176,36 +178,36 @@ namespace dkg {
             }
         }
 
-        std::unordered_map<MuddleAddress, std::pair<bn::Fr, bn::Fr>> QUAL_complaints;
+        std::unordered_map<MuddleAddress, std::pair<MsgShare, MsgShare>> QUAL_complaints;
         for (auto &c : complaints_local) {
             uint32_t c_index {cabinetIndex(c)};
             //logger.trace("node {} exposes shares of node {}", cabinet_index_, c_index);
-            QUAL_complaints.insert({c, {s_ij[cabinet_index_][c_index], sprime_ij[cabinet_index_][c_index]}});
+            QUAL_complaints.insert({c, {s_ij[cabinet_index_][c_index].getStr(), sprime_ij[cabinet_index_][c_index].getStr()}});
         }
-        sendBroadcast(DKGEnvelop{Shares{static_cast<uint64_t>(State::WAITING_FOR_QUAL_COMPLAINTS), QUAL_complaints, "signature"}});
+        sendBroadcast(DKGEnvelop{SharesMessage{static_cast<uint64_t>(State::WAITING_FOR_QUAL_COMPLAINTS), QUAL_complaints, "signature"}});
         state_ = State::WAITING_FOR_QUAL_COMPLAINTS;
     }
 
     void DKG::broadcastReconstructionShares() {
         std::lock_guard<std::mutex> lock{mutex_};
 
-        std::unordered_map<MuddleAddress, std::pair<bn::Fr, bn::Fr>> complaint_shares;
+        std::unordered_map<MuddleAddress, std::pair<MsgShare, MsgShare>> complaint_shares;
         for (const auto &in : complaints) {
             assert(QUAL.find(in) != QUAL.end());
             uint32_t in_index{cabinetIndex(in)};
             reconstruction_shares.insert({in, {{}, std::vector<bn::Fr>(cabinet_.size(), zeroFr_)}});
             reconstruction_shares.at(in).first.push_back(cabinet_index_);
             reconstruction_shares.at(in).second[cabinet_index_] = s_ij[in_index][cabinet_index_];
-            complaint_shares.insert({in, {s_ij[in_index][cabinet_index_], sprime_ij[in_index][cabinet_index_]}});
+            complaint_shares.insert({in, {s_ij[in_index][cabinet_index_].getStr(), sprime_ij[in_index][cabinet_index_].getStr()}});
         }
-        sendBroadcast(DKGEnvelop{Shares{static_cast<uint64_t>(State::WAITING_FOR_RECONSTRUCTION_SHARES), complaint_shares, "signature"}});
+        sendBroadcast(DKGEnvelop{SharesMessage{static_cast<uint64_t>(State::WAITING_FOR_RECONSTRUCTION_SHARES), complaint_shares, "signature"}});
         state_ = State::WAITING_FOR_RECONSTRUCTION_SHARES;
     }
 
-    void DKG::onNewShares(MuddleAddress from, std::pair<bn::Fr, bn::Fr> const &shares) {
+    void DKG::onNewShares(MuddleAddress from, std::pair<MsgShare, MsgShare> const &shares) {
         uint32_t from_index{cabinetIndex(from)};
-        s_ij[from_index][cabinet_index_] = (shares.first);
-        sprime_ij[from_index][cabinet_index_] = shares.second;
+        s_ij[from_index][cabinet_index_].setStr(shares.first);
+        sprime_ij[from_index][cabinet_index_].setStr(shares.second);
 
         msg_counter_.inc(MsgCounter::Message::INITIAL_SHARE);
         if ((state_ == State::WAITING_FOR_SHARE) and (msg_counter_.count(MsgCounter::Message::INITIAL_SHARE) == cabinet_.size() - 1)
@@ -215,15 +217,15 @@ namespace dkg {
     }
 
 
-    void DKG::onNewCoefficients(const std::shared_ptr<Coefficients> &msg_ptr,
+    void DKG::onNewCoefficients(const std::shared_ptr<CoefficientsMessage> &msg_ptr,
                                       const MuddleAddress &from_id) {
         uint32_t from_index{cabinetIndex(from_id)};
-        if (msg_ptr -> getPhase() == static_cast<uint64_t>(State::WAITING_FOR_SHARE)) {
+        if (msg_ptr -> Phase() == static_cast<uint64_t>(State::WAITING_FOR_SHARE)) {
             bn::G2 zero;
             zero.clear();
             for (uint32_t ii = 0; ii <= threshold_; ++ii) {
                 if (C_ik[from_index][ii] == zero) {
-                    C_ik[from_index][ii].setStr((msg_ptr->getCoefficients())[ii]);
+                    C_ik[from_index][ii].setStr((msg_ptr->Coefficients())[ii]);
                 }
             }
             msg_counter_.inc(MsgCounter::Message::INITIAL_COEFFICIENT);
@@ -231,12 +233,12 @@ namespace dkg {
                 and (msg_counter_.count(MsgCounter::Message::INITIAL_COEFFICIENT)) == cabinet_.size() - 1) {
                 broadcastComplaints();
             }
-        } else if (msg_ptr -> phase() == static_cast<uint64_t>(State::WAITING_FOR_QUAL_SHARES)) {
+        } else if (msg_ptr->Phase() == static_cast<uint64_t>(State::WAITING_FOR_QUAL_SHARES)) {
             bn::G2 zero;
             zero.clear();
             for (uint32_t ii = 0; ii <= threshold_; ++ii) {
                 if (A_ik[from_index][ii] == zero) {
-                    A_ik[from_index][ii].setStr((msg_ptr->getCoefficients())[ii]);
+                    A_ik[from_index][ii].setStr((msg_ptr->Coefficients())[ii]);
                 }
             }
             msg_counter_.inc(MsgCounter::Message::QUAL_COEFFICIENT);
@@ -247,7 +249,7 @@ namespace dkg {
     }
 
     void
-    DKG::onComplaints(const std::shared_ptr<Complaints> &msg_ptr, const MuddleAddress &from_id) {
+    DKG::onComplaints(const std::shared_ptr<ComplaintsMessage> &msg_ptr, const MuddleAddress &from_id) {
         uint32_t from_index{cabinetIndex(from_id)};
         std::lock_guard<std::mutex> lock{mutex_};
         // Check if we have received a complaints message from this node before and if not log that we received
@@ -259,7 +261,7 @@ namespace dkg {
             return;
         }
 
-        for (const auto &bad_node : msg_ptr->getComplaints()) {
+        for (const auto &bad_node : msg_ptr->Complaints()) {
             /* Obsolete as the message now contains a set
             // Keep track of the nodes which are included in complaint. If there are duplicates then we add the sender
             // to complaints
@@ -301,8 +303,8 @@ namespace dkg {
         }
     }
 
-    void DKG::onExposedShares(const fetch::consensus::pb::Broadcast_Shares &shares, const std::string &from_id) {
-        uint64_t phase{shares.phase()};
+    void DKG::onExposedShares(const std::shared_ptr<SharesMessage> &shares, const MuddleAddress &from_id) {
+        uint64_t phase{shares->Phase()};
         if (phase == static_cast<uint64_t>(State::WAITING_FOR_COMPLAINT_ANSWERS)) {
             FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " received complaint answer from ", cabinetIndex(from_id));
             onComplaintsAnswer(shares, from_id);
@@ -316,34 +318,31 @@ namespace dkg {
     }
 
     void
-    DKG::onComplaintsAnswer(const fetch::consensus::pb::Broadcast_Shares &answer, const std::string &from_id) {
+    DKG::onComplaintsAnswer(const std::shared_ptr<SharesMessage> &answer, const MuddleAddress &from_id) {
         uint32_t from_index{cabinetIndex(from_id)};
-        // If a fields are not all complete we complain against the sender and do not process
-        if (answer.first_size() != answer.second_size() or answer.first_size() != answer.reporter_size()) {
-            complaints.insert(from_id);
-        } else {
-            for (auto ii = 0; ii < answer.first_size(); ++ii) {
-                uint32_t reporter_index{cabinetIndex(answer.reporter(ii))};
-                //Verify shares received
-                bn::Fr s, sprime;
-                bn::G2 lhsG, rhsG;
-                s.clear();
-                sprime.clear();
-                lhsG.clear();
-                rhsG.clear();
-                s.setStr(answer.first(ii));
-                sprime.setStr(answer.second(ii));
-                rhsG = computeRHS(from_index, C_ik[reporter_index]);
-                lhsG = computeLHS(G, H, s, sprime);
-                if (lhsG != rhsG) {
-                    FETCH_LOG_WARN(LOGGING_NAME, "Node: ", cabinet_index_, " verification for node ", cabinetIndex(from_id), " complaint answer failed");
-                    complaints.insert(from_id);
-                } else {
-                    FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " verification for node ", cabinetIndex(from_id), " complaint answer succeeded");
-                    if (reporter_index == cabinet_index_) {
-                        s_ij[from_index][cabinet_index_] = s;
-                        sprime_ij[from_index][cabinet_index_] = sprime;
-                    }
+        for (const auto &share : answer->Shares()) {
+            uint32_t reporter_index{cabinetIndex(share.first)};
+            //Verify shares received
+            bn::Fr s, sprime;
+            bn::G2 lhsG, rhsG;
+            s.clear();
+            sprime.clear();
+            lhsG.clear();
+            rhsG.clear();
+            s.setStr(share.second.first);
+            sprime.setStr(share.second.second);
+            rhsG = computeRHS(from_index, C_ik[reporter_index]);
+            lhsG = computeLHS(G, H, s, sprime);
+            if (lhsG != rhsG) {
+                FETCH_LOG_WARN(LOGGING_NAME, "Node: ", cabinet_index_, " verification for node ", cabinetIndex(from_id),
+                               " complaint answer failed");
+                complaints.insert(from_id);
+            } else {
+                FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " verification for node ", cabinetIndex(from_id),
+                               " complaint answer succeeded");
+                if (reporter_index == cabinet_index_) {
+                    s_ij[from_index][cabinet_index_] = s;
+                    sprime_ij[from_index][cabinet_index_] = sprime;
                 }
             }
         }
@@ -368,8 +367,6 @@ namespace dkg {
             }
         }
     }
-
-       */
 
     bool DKG::buildQual() {
         //Altogether, complaints consists of
@@ -410,49 +407,44 @@ namespace dkg {
         // (a) Each party $P_i$, $i \in QUAL$, broadcasts $A_{ik} =
         //     g^{a_{ik}} \bmod p$ for $k = 0, \ldots, t$.
 
-        std::vector<bn::G2> coefficients;
+        std::vector<MsgCoefficient> coefficients;
         for (size_t k = 0; k <= threshold_; k++) {
             A_ik[cabinet_index_][k] = g__a_i[k];
-            coefficients.push_back(A_ik[cabinet_index_][k]);
+            coefficients.push_back(A_ik[cabinet_index_][k].getStr());
         }
-        sendBroadcast(DKGEnvelop{Coefficients{static_cast<uint8_t>(State::WAITING_FOR_QUAL_SHARES), coefficients, "signature"}});
+        sendBroadcast(DKGEnvelop{CoefficientsMessage{static_cast<uint8_t>(State::WAITING_FOR_QUAL_SHARES), coefficients, "signature"}});
         state_ = State::WAITING_FOR_QUAL_SHARES;
         complaints.clear();
     }
 
 
-    void DKG::onQUALComplaints(const fetch::consensus::pb::Broadcast_Shares &shares, const std::string &from_id) {
+    void DKG::onQUALComplaints(const std::shared_ptr<SharesMessage> &shares, const MuddleAddress &from_id) {
         uint32_t from_index{cabinetIndex(from_id)};
-        // If not all fields are complete we complain against the sender
-        if (shares.first_size() != shares.second_size() or shares.first_size() != shares.reporter_size()) {
-            complaints.insert(from_id);
-        } else {
-            for (auto ii = 0; ii < shares.first_size(); ++ii) {
-                //Check person who's shares are being exposed is not in QUAL then don't bother with checks
-                if (QUAL.find(shares.reporter(ii)) != QUAL.end()) {
-                    // verify complaint, i.e. (4) holds (5) not
-                    bn::G2 lhs, rhs;
-                    bn::Fr s, sprime;
-                    lhs.clear();
-                    rhs.clear();
-                    s.clear();
-                    sprime.clear();
-                    s.setStr(shares.first(ii));
-                    sprime.setStr(shares.second(ii));
-                    // check equation (4)
-                    lhs = computeLHS(G, H, s, sprime);
-                    rhs = computeRHS(cabinetIndex(shares.reporter(ii)), C_ik[from_index]);
-                    if (lhs != rhs) {
-                        complaints.insert(from_id);
-                    }
-                    // check equation (5)
-                    bn::G2::mul(lhs, G, s);//G^s
-                    rhs = computeRHS(cabinet_index_, A_ik[from_index]);
-                    if (lhs != rhs) {
-                        complaints.insert(shares.reporter(ii));
-                    } else {
-                        complaints.insert(from_id);
-                    }
+        for (const auto &share : shares->Shares()) {
+            //Check person who's shares are being exposed is not in QUAL then don't bother with checks
+            if (QUAL.find(share.first) != QUAL.end()) {
+                // verify complaint, i.e. (4) holds (5) not
+                bn::G2 lhs, rhs;
+                bn::Fr s, sprime;
+                lhs.clear();
+                rhs.clear();
+                s.clear();
+                sprime.clear();
+                s.setStr(share.second.first);
+                sprime.setStr(share.second.second);
+                // check equation (4)
+                lhs = computeLHS(G, H, s, sprime);
+                rhs = computeRHS(cabinetIndex(share.first), C_ik[from_index]);
+                if (lhs != rhs) {
+                    complaints.insert(from_id);
+                }
+                // check equation (5)
+                bn::G2::mul(lhs, G, s);//G^s
+                rhs = computeRHS(cabinet_index_, A_ik[from_index]);
+                if (lhs != rhs) {
+                    complaints.insert(share.first);
+                } else {
+                    complaints.insert(from_id);
                 }
             }
         }
@@ -478,16 +470,15 @@ namespace dkg {
         }
     }
 
-    void DKG::onReconstructionShares(const fetch::consensus::pb::Broadcast_Shares &shares,
-                                           const std::string &from_id) {
+    void DKG::onReconstructionShares(const std::shared_ptr<SharesMessage> &shares, const MuddleAddress &from_id) {
         //Return if the sender is in complaints, or not in QUAL
         if (complaints.find(from_id) != complaints.end() or QUAL.find(from_id) == QUAL.end()) {
             return;
         }
         uint32_t from_index{cabinetIndex(from_id)};
-        for (auto ii = 0; ii < shares.first_size(); ++ii) {
-            uint32_t victim_index{cabinetIndex(shares.reporter(ii))};
-            assert(complaints.find(shares.reporter(ii)) != complaints.end());
+        for (const auto &share : shares->Shares()) {
+            uint32_t victim_index{cabinetIndex(share.first)};
+            assert(complaints.find(share.first) != complaints.end());
             bn::G2 lhs, rhs;
             bn::Fr s, sprime;
             lhs.clear();
@@ -495,15 +486,15 @@ namespace dkg {
             s.clear();
             sprime.clear();
 
-            s.setStr(shares.first(ii));
-            sprime.setStr(shares.second(ii));
+            s.setStr(share.second.first);
+            sprime.setStr(share.second.second);
             lhs = computeLHS(G, H, s, sprime);
             rhs = computeRHS(from_index, C_ik[victim_index]);
             // check equation (4)
-            if (lhs == rhs and reconstruction_shares.at(shares.reporter(ii)).second[from_index] == zeroFr_) {
+            if (lhs == rhs and reconstruction_shares.at(share.first).second[from_index] == zeroFr_) {
                 std::lock_guard<std::mutex> lock{mutex_};
-                reconstruction_shares.at(shares.reporter(ii)).first.push_back(from_index); // good share received
-                reconstruction_shares.at(shares.reporter(ii)).second[from_index] = s;
+                reconstruction_shares.at(share.first).first.push_back(from_index); // good share received
+                reconstruction_shares.at(share.first).second[from_index] = s;
             }
         }
         msg_counter_.inc(MsgCounter::Message::RECONSTRUCTION_SHARE);

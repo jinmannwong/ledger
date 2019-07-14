@@ -189,7 +189,7 @@ void DkgService::SubmitSignatureShare(uint64_t round, crypto::bls::Id const &id,
  * @return The associated status result for the operation
  */
 
-void DkgService::SubmitShare(MuddleAddress const &address, std::pair<bn::Fr, bn::Fr> const &shares)
+void DkgService::SubmitShare(MuddleAddress const &address, std::pair<std::string, std::string> const &shares)
 {
    //dkg_.onNewShares(address, shares);
 }
