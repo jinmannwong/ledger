@@ -215,12 +215,12 @@ void DKG::BroadcastComplaintsAnswer()
   state_ = State::WAITING_FOR_COMPLAINT_ANSWERS;
 }
 
-void DKG::BroadcastQUALComplaints()
+void DKG::BroadcastQualComplaints()
 {
   std::unordered_set<MuddleAddress> complaints_local;
   uint32_t                          i  = 0;
   auto                              iq = cabinet_.begin();
-  for (const auto &miner : QUAL)
+  for (const auto &miner : qual)
   {
     while (*iq != miner)
     {
@@ -266,7 +266,7 @@ void DKG::BroadcastReconstructionShares()
   std::unordered_map<MuddleAddress, std::pair<MsgShare, MsgShare>> complaint_shares;
   for (const auto &in : complaints)
   {
-    assert(QUAL.find(in) != QUAL.end());
+    assert(qual.find(in) != qual.end());
     uint32_t in_index{CabinetIndex(in)};
     reconstruction_shares.insert({in, {{}, std::vector<bn::Fr>(cabinet_.size(), zeroFr_)}});
     reconstruction_shares.at(in).first.push_back(cabinet_index_);
@@ -287,10 +287,10 @@ void DKG::OnNewShares(MuddleAddress from, std::pair<MsgShare, MsgShare> const &s
   s_ij[from_index][cabinet_index_].setStr(shares.first);
   sprime_ij[from_index][cabinet_index_].setStr(shares.second);
 
-  msg_counter_.inc(MsgCounter::Message::INITIAL_SHARE);
+  msg_counter_.Increment(MsgCounter::Message::INITIAL_SHARE);
   if ((state_ == State::WAITING_FOR_SHARE) and
-      (msg_counter_.count(MsgCounter::Message::INITIAL_SHARE) == cabinet_.size() - 1) and
-      (msg_counter_.count(MsgCounter::Message::INITIAL_COEFFICIENT)) == cabinet_.size() - 1)
+      (msg_counter_.Count(MsgCounter::Message::INITIAL_SHARE) == cabinet_.size() - 1) and
+      (msg_counter_.Count(MsgCounter::Message::INITIAL_COEFFICIENT)) == cabinet_.size() - 1)
   {
     BroadcastComplaints();
   }
@@ -311,10 +311,10 @@ void DKG::OnNewCoefficients(const std::shared_ptr<CoefficientsMessage> &msg_ptr,
         C_ik[from_index][ii].setStr((msg_ptr->coefficients())[ii]);
       }
     }
-    msg_counter_.inc(MsgCounter::Message::INITIAL_COEFFICIENT);
+    msg_counter_.Increment(MsgCounter::Message::INITIAL_COEFFICIENT);
     if ((state_ == State::WAITING_FOR_SHARE) and
-        (msg_counter_.count(MsgCounter::Message::INITIAL_SHARE) == cabinet_.size() - 1) and
-        (msg_counter_.count(MsgCounter::Message::INITIAL_COEFFICIENT)) == cabinet_.size() - 1)
+        (msg_counter_.Count(MsgCounter::Message::INITIAL_SHARE) == cabinet_.size() - 1) and
+        (msg_counter_.Count(MsgCounter::Message::INITIAL_COEFFICIENT)) == cabinet_.size() - 1)
     {
       BroadcastComplaints();
     }
@@ -330,11 +330,11 @@ void DKG::OnNewCoefficients(const std::shared_ptr<CoefficientsMessage> &msg_ptr,
         A_ik[from_index][ii].setStr((msg_ptr->coefficients())[ii]);
       }
     }
-    msg_counter_.inc(MsgCounter::Message::QUAL_COEFFICIENT);
+    msg_counter_.Increment(MsgCounter::Message::QUAL_COEFFICIENT);
     if ((state_ == State::WAITING_FOR_QUAL_SHARES) and
-        (msg_counter_.count(MsgCounter::Message::QUAL_COEFFICIENT) == cabinet_.size() - 1))
+        (msg_counter_.Count(MsgCounter::Message::QUAL_COEFFICIENT) == cabinet_.size() - 1))
     {
-      BroadcastQUALComplaints();
+      BroadcastQualComplaints();
     }
   }
 }
@@ -381,9 +381,9 @@ void DKG::OnComplaints(const std::shared_ptr<ComplaintsMessage> &msg_ptr,
       complaints_from.insert(from_id);
     }
   }
-  msg_counter_.inc(MsgCounter::Message::COMPLAINT);
+  msg_counter_.Increment(MsgCounter::Message::COMPLAINT);
   if (state_ == State::WAITING_FOR_COMPLAINTS and
-      (msg_counter_.count(MsgCounter::Message::COMPLAINT) == cabinet_.size() - 1))
+      (msg_counter_.Count(MsgCounter::Message::COMPLAINT) == cabinet_.size() - 1))
   {
     // Add miners which did not send a complaint to complaints (redundant for now but will be
     // necessary when we do not wait for a message from everyone)
@@ -429,7 +429,7 @@ void DKG::OnExposedShares(const std::shared_ptr<SharesMessage> &shares,
   {
     FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " received QUAL complaint from ",
                    CabinetIndex(from_id));
-    OnQUALComplaints(shares, from_id);
+    OnQualComplaints(shares, from_id);
   }
   else if (phase1 == static_cast<uint64_t>(State::WAITING_FOR_RECONSTRUCTION_SHARES))
   {
@@ -475,10 +475,10 @@ void DKG::OnComplaintsAnswer(const std::shared_ptr<SharesMessage> &answer,
     }
   }
   complaint_answers_received[from_index] = true;
-  msg_counter_.inc(MsgCounter::Message::COMPLAINT_ANSWER);
+  msg_counter_.Increment(MsgCounter::Message::COMPLAINT_ANSWER);
   assert(complaints.empty());
   if (state_ == State::WAITING_FOR_COMPLAINT_ANSWERS and
-      (msg_counter_.count(MsgCounter::Message::COMPLAINT_ANSWER) == cabinet_.size() - 1))
+      (msg_counter_.Count(MsgCounter::Message::COMPLAINT_ANSWER) == cabinet_.size() - 1))
   {
     // Add miners which did not send a complaint to complaints (redundant for now but will be
     // necessary when we do not wait for a message from everyone)
@@ -495,7 +495,7 @@ void DKG::OnComplaintsAnswer(const std::shared_ptr<SharesMessage> &answer,
     }
     if (BuildQual())
     {
-      FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " build QUAL of size ", QUAL.size());
+      FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " build QUAL of size ", qual.size());
       ComputeSecretShare();
     }
     else
@@ -517,19 +517,19 @@ bool DKG::BuildQual()
   {
     if (complaints.find(node) == complaints.end())
     {
-      QUAL.insert(node);
+      qual.insert(node);
     }
   }
-  if (QUAL.find(address_) == QUAL.end() or QUAL.size() <= threshold_)
+  if (qual.find(address_) == qual.end() or qual.size() <= threshold_)
   {
-    if (QUAL.find(address_) == QUAL.end())
+    if (qual.find(address_) == qual.end())
     {
       FETCH_LOG_WARN(LOGGING_NAME, "Node: ", cabinet_index_, " build QUAL failed as not in QUAL");
     }
     else
     {
       FETCH_LOG_WARN(LOGGING_NAME, "Node: ", cabinet_index_, " build QUAL failed as size ",
-                     QUAL.size(), " less than threshold ", threshold_);
+                     qual.size(), " less than threshold ", threshold_);
     }
     return false;
   }
@@ -543,7 +543,7 @@ void DKG::ComputeSecretShare()
   //    $x\prime_i = \sum_{j \in QUAL} s\prime_{ji} \bmod q$.
   x_i      = 0;
   xprime_i = 0;
-  for (const auto &iq : QUAL)
+  for (const auto &iq : qual)
   {
     uint32_t iq_index = CabinetIndex(iq);
     bn::Fr::add(x_i, x_i, s_ij[iq_index][cabinet_index_]);
@@ -566,14 +566,14 @@ void DKG::ComputeSecretShare()
   complaints.clear();
 }
 
-void DKG::OnQUALComplaints(const std::shared_ptr<SharesMessage> &shares_ptr,
+void DKG::OnQualComplaints(const std::shared_ptr<SharesMessage> &shares_ptr,
                            const MuddleAddress &                 from_id)
 {
   uint32_t from_index{CabinetIndex(from_id)};
   for (const auto &share : shares_ptr->shares())
   {
     // Check person who's shares are being exposed is not in QUAL then don't bother with checks
-    if (QUAL.find(share.first) != QUAL.end())
+    if (qual.find(share.first) != qual.end())
     {
       // verify complaint, i.e. (4) holds (5) not
       bn::G2 lhs, rhs;
@@ -604,15 +604,15 @@ void DKG::OnQUALComplaints(const std::shared_ptr<SharesMessage> &shares_ptr,
       }
     }
   }
-  QUAL_complaints_received.insert(from_id);
+  qual_complaints_received.insert(from_id);
   if (state_ == State::WAITING_FOR_QUAL_COMPLAINTS and
-      (QUAL_complaints_received.size() == QUAL.size() - 1))
+      (qual_complaints_received.size() == qual.size() - 1))
   {
     // Add QUAL members which did not send a complaint to complaints (redundant for now but will be
     // necessary when we do not wait for a message from everyone)
-    for (const auto &iq : QUAL)
+    for (const auto &iq : qual)
     {
-      if (iq != address_ and QUAL_complaints_received.find(iq) == QUAL_complaints_received.end())
+      if (iq != address_ and qual_complaints_received.find(iq) == qual_complaints_received.end())
       {
         complaints.insert(iq);
       }
@@ -629,7 +629,7 @@ void DKG::OnQUALComplaints(const std::shared_ptr<SharesMessage> &shares_ptr,
       FETCH_LOG_WARN(LOGGING_NAME, "Node: ", cabinet_index_, " protocol has failed: in complaints");
       return;
     }
-    assert(QUAL.find(address_) != QUAL.end());
+    assert(qual.find(address_) != qual.end());
     BroadcastReconstructionShares();
   }
 }
@@ -638,7 +638,7 @@ void DKG::OnReconstructionShares(const std::shared_ptr<SharesMessage> &shares_pt
                                  const MuddleAddress &                 from_id)
 {
   // Return if the sender is in complaints, or not in QUAL
-  if (complaints.find(from_id) != complaints.end() or QUAL.find(from_id) == QUAL.end())
+  if (complaints.find(from_id) != complaints.end() or qual.find(from_id) == qual.end())
   {
     return;
   }
@@ -666,10 +666,10 @@ void DKG::OnReconstructionShares(const std::shared_ptr<SharesMessage> &shares_pt
       reconstruction_shares.at(share.first).second[from_index] = s;
     }
   }
-  msg_counter_.inc(MsgCounter::Message::RECONSTRUCTION_SHARE);
+  msg_counter_.Increment(MsgCounter::Message::RECONSTRUCTION_SHARE);
   if (state_ == State::WAITING_FOR_RECONSTRUCTION_SHARES and
-      msg_counter_.count(MsgCounter::Message::RECONSTRUCTION_SHARE) ==
-          QUAL.size() - complaints.size() - 1)
+      msg_counter_.Count(MsgCounter::Message::RECONSTRUCTION_SHARE) ==
+              qual.size() - complaints.size() - 1)
   {
     if (!RunReconstruction())
     {
@@ -723,24 +723,24 @@ void DKG::ComputePublicKeys()
 {
   FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " compute public keys");
   // For all parties in $QUAL$, set $y_i = A_{i0} = g^{z_i} \bmod p$.
-  for (const auto &iq : QUAL)
+  for (const auto &iq : qual)
   {
     uint32_t it{CabinetIndex(iq)};
     y_i[it] = A_ik[it][0];
   }
   // Compute $y = \prod_{i \in QUAL} y_i \bmod p$
   y_.clear();
-  for (const auto &iq : QUAL)
+  for (const auto &iq : qual)
   {
     uint32_t it{CabinetIndex(iq)};
     bn::G2::add(y_, y_, y_i[it]);
   }
   // Compute public verification keys $v_j = \prod_{i \in QUAL} \prod_{k=0}^t (A_{ik})^{j^k} \bmod
   // p$
-  for (const auto &jq : QUAL)
+  for (const auto &jq : qual)
   {
     uint32_t jt{CabinetIndex(jq)};
-    for (const auto &iq : QUAL)
+    for (const auto &iq : qual)
     {
       uint32_t it{CabinetIndex(iq)};
       bn::G2::add(v_i[jt], v_i[jt], A_ik[it][0]);
@@ -761,8 +761,8 @@ void DKG::Clear()
   complaints_from.clear();
   complaints_received.clear();
   complaint_answers_received.clear();
-  QUAL_complaints_received.clear();
-  msg_counter_.clear();
+  qual_complaints_received.clear();
+  msg_counter_.Clear();
 }
 }  // namespace dkg
 }  // namespace fetch
