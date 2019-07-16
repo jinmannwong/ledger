@@ -100,9 +100,10 @@ bn::Fr computeZi(const std::vector<size_t> &parties, const std::vector<bn::Fr> &
     bn::Fr rhsF{1}, lhsF{1}, tmpF;
     for (auto lt : parties)
     {
-      if (lt != jt)
+      if (lt != jt) {
         // adjust index in computation
         bn::Fr::mul(rhsF, rhsF, lt + 1);
+      }
     }
     for (auto lt : parties)
     {
@@ -125,8 +126,9 @@ bn::Fr computeZi(const std::vector<size_t> &parties, const std::vector<bn::Fr> &
 std::vector<bn::Fr> interpolatePolynom(const std::vector<bn::Fr> &a, const std::vector<bn::Fr> &b)
 {
   size_t m = a.size();
-  if ((b.size() != m) || (m == 0))
+  if ((b.size() != m) || (m == 0)) {
     throw std::invalid_argument("mcl_interpolate_polynom: bad m");
+  }
   std::vector<bn::Fr> prod{a}, res(m, 0);
   bn::Fr              t1, t2;
   for (size_t k = 0; k < m; k++)
@@ -158,8 +160,9 @@ std::vector<bn::Fr> interpolatePolynom(const std::vector<bn::Fr> &a, const std::
     res[k] = t1;
     if (k < (m - 1))
     {
-      if (k == 0)
+      if (k == 0) {
         bn::Fr::neg(prod[0], prod[0]);
+      }
       else
       {
         bn::Fr::neg(t1, a[k]);
