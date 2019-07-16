@@ -178,9 +178,12 @@ public:
   void SendShares(MuddleAddress const &                      destination,
                   std::pair<std::string, std::string> const &shares);
 
-  void OnRbcDeliver(MuddleAddress const &from, DKGEnvelop const &envelop)
+  void OnRbcDeliver(MuddleAddress const &from, byte_array::ConstByteArray const &payload)
   {
-    dkg_.OnDkgMessage(from, envelop.Message());
+      DKGEnvelop    env;
+      DKGSerializer serializer{payload};
+      serializer >> env;
+    dkg_.OnDkgMessage(from, env.Message());
   }
   void StartDkg()
   {

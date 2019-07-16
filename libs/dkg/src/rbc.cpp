@@ -479,10 +479,7 @@ void RBC::OnRAnswer(const std::shared_ptr<RAnswer> msg_ptr, uint32_t sender_inde
 void RBC::Deliver(const SerialisedMessage &msg, uint32_t sender_index)
 {
   MuddleAddress miner_id{*std::next(current_cabinet_.begin(), sender_index)};
-  DKGEnvelop    env;
-  DKGSerializer serializer{msg};
-  serializer >> env;
-  dkg_service_.OnRbcDeliver(miner_id, env);
+  dkg_service_.OnRbcDeliver(miner_id, msg);
   // Try to deliver old messages
   std::lock_guard<std::mutex> lock(mutex_deliver_);
   if (!parties_[sender_index].undelivered_msg.empty())
@@ -493,10 +490,7 @@ void RBC::Deliver(const SerialisedMessage &msg, uint32_t sender_index)
            old_tag_msg->second.id() == CHANNEL_BROADCAST and
            old_tag_msg->second.counter() == parties_[id_].deliver_s)
     {
-      DKGEnvelop    env_old;
-      DKGSerializer serializer_old{broadcasts_[old_tag_msg->second.tag()].mbar};
-      serializer_old >> env_old;
-      dkg_service_.OnRbcDeliver(miner_id, env_old);
+      dkg_service_.OnRbcDeliver(miner_id, broadcasts_[old_tag_msg->second.tag()].mbar);
       old_tag_msg = parties_[sender_index].undelivered_msg.erase(old_tag_msg);
     }
   }
