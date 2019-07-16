@@ -85,7 +85,7 @@ RBC::RBC(Endpoint &endpoint, MuddleAddress address, CabinetMembers const &cabine
     serialiser >> env;
 
     // Dispatch the event
-    OnRBC(from, env, transmitter);
+    OnRBC(from, env);
   });
 }
 
@@ -140,6 +140,7 @@ void RBC::Broadcast(const RBCEnvelop &env)
   env_serializer.Reserve(env_counter.size());
   env_serializer << env;
 
+  std::lock_guard<std::mutex> lock{mutex_broadcast_};
   endpoint_.Broadcast(SERVICE_DKG, CHANNEL_BROADCAST, env_serializer.data());
 }
 
@@ -151,7 +152,7 @@ void RBC::Broadcast(const RBCEnvelop &env)
  */
 void RBC::SendRBroadcast(const SerialisedMessage &msg)
 {
-  RBCEnvelop env{RBroadcast(CHANNEL_BROADCAST, id_, ++msg_counter_, msg)};
+  RBCEnvelop env{RBroadcast(CHANNEL_BROADCAST, id_,  ++msg_counter_, msg)};
   Broadcast(env);
   OnRBroadcast(std::dynamic_pointer_cast<RBroadcast>(env.Message()), id_);  // Self sending
 }
@@ -236,8 +237,7 @@ struct RBC::MsgCount RBC::ReceivedReady(TagType tag, std::shared_ptr<RHash> msg_
  * @param envelop RBCEnvelop message
  * @param transmitter Muddle address of transmitter
  */
-void RBC::OnRBC(MuddleAddress const &from, RBCEnvelop const &envelop,
-                MuddleAddress const &transmitter)
+void RBC::OnRBC(MuddleAddress const &from, RBCEnvelop const &envelop)
 {
   auto     msg_ptr = envelop.Message();
   uint32_t sender_index{CabinetIndex(from)};
@@ -328,6 +328,7 @@ void RBC::OnREcho(const std::shared_ptr<REcho> msg_ptr, uint32_t sender_index)
   if (ReceivedEcho(tag, msg_ptr))
   {
     RBCEnvelop env{RReady{msg_ptr->channel(), msg_ptr->id(), msg_ptr->counter(), msg_ptr->hash()}};
+    FETCH_LOG_INFO(LOGGING_NAME, "Node ", id_, " broadcasts ", MsgTypeToString(MsgType::R_READY), " for tag ", tag);
     Broadcast(env);
     OnRReady(std::dynamic_pointer_cast<RReady>(env.Message()), id_);  // self sending.
   }
@@ -449,7 +450,7 @@ void RBC::OnRAnswer(const std::shared_ptr<RAnswer> msg_ptr, uint32_t sender_inde
     }
     else
     {
-      // TODO: Double check this part of protocol
+      // TODO(jmw): Double check this part of protocol
       broadcasts_[tag].mbar = msg_ptr->message();
     }
   }
@@ -536,8 +537,9 @@ bool RBC::CheckTag(RBCMessage &msg)
                     " does not match tag counter ", msg.counter(), " for node ", msg.id());
     // Store tag of message for processing later
     if (parties_[msg.id()].undelivered_msg.find(msg.counter()) ==
-        parties_[msg.counter()].undelivered_msg.end())
+        parties_[msg.counter()].undelivered_msg.end()) {
       parties_[msg.id()].undelivered_msg.insert({msg.counter(), msg});
+    }
   }
   return false;
 }
@@ -551,11 +553,11 @@ bool RBC::CheckTag(RBCMessage &msg)
  * @param m Message type of new RBCMessage received
  * @return Bool for whether the message flag for this message type has been set
  */
-bool RBC::SetPartyFlag(uint32_t l, TagType tag, MsgType m)
+ bool RBC::SetPartyFlag(uint32_t sender_index, TagType tag, MsgType msg_type)
 {
   std::lock_guard<std::mutex> lock(mutex_flags_);
-  auto &                      iter  = parties_[l].flags[tag];
-  auto                        index = static_cast<uint32_t>(m);
+  auto &                      iter  = parties_[sender_index].flags[tag];
+  auto                        index = static_cast<uint32_t>(msg_type);
   if (iter[index])
   {
     FETCH_LOG_TRACE(LOGGING_NAME, "Node ", id_, " repeated msg type ", msgType_to_string(m),
