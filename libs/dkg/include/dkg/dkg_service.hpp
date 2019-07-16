@@ -24,6 +24,8 @@
 #include "core/state_machine.hpp"
 #include "crypto/bls_base.hpp"
 #include "dkg/dkg_rpc_protocol.hpp"
+#include "dkg/dkg.hpp"
+#include "dkg/rbc.hpp"
 #include "dkg/round.hpp"
 #include "ledger/chain/address.hpp"
 #include "ledger/consensus/entropy_generator_interface.hpp"
@@ -122,10 +124,10 @@ public:
   using Digest         = ledger::Digest;
   using ConstByteArray = byte_array::ConstByteArray;
   using MuddleAddress  = ConstByteArray;
-  using CabinetMembers = std::unordered_set<MuddleAddress>;
+  using CabinetMembers = std::set<MuddleAddress>;
 
   // Construction / Destruction
-  explicit DkgService(Endpoint &endpoint, ConstByteArray address, ConstByteArray dealer_address);
+  explicit DkgService(Endpoint &endpoint, ConstByteArray address);
   DkgService(DkgService const &) = delete;
   DkgService(DkgService &&)      = delete;
   ~DkgService() override         = default;
@@ -164,6 +166,31 @@ public:
     FETCH_LOCK(cabinet_lock_);
     current_cabinet_   = std::move(cabinet);
     current_threshold_ = threshold;
+    dkg_.ResetCabinet();
+    rbc_.ResetCabinet();
+  }
+  void SendReliableBroadcast(DKGEnvelop const &env)
+  {
+    DKGSerializer serialiser;
+    env.Serialize(serialiser);
+    rbc_.SendRBroadcast(serialiser.data());
+  }
+  void SendShares(MuddleAddress const &                      destination,
+                  std::pair<std::string, std::string> const &shares);
+
+  void OnRbcDeliver(MuddleAddress const &from, DKGEnvelop const &envelop)
+  {
+    dkg_.OnDkgMessage(from, envelop.Message());
+  }
+  void StartDkg()
+  {
+    dkg_.BroadcastShares();
+  }
+  bool dkg_completed {false};
+
+  std::string GroupPublicKey() const
+  {
+    return dkg_.GroupPublicKey();
   }
   /// @}
 
@@ -206,27 +233,27 @@ private:
   State OnBuildAeonKeysState();
   State OnRequestSecretKeyState();
   State OnWaitForSecretKeyState();
-  State OnBroadcastSignatureState();
   State OnCollectSignaturesState();
   State OnCompleteState();
   /// @}
 
   /// @name Utils
   /// @{
-  bool     BuildAeonKeys();
   bool     GetSignaturePayload(uint64_t round, ConstByteArray &payload);
   RoundPtr LookupRound(uint64_t round, bool create = false);
   /// @}
 
-  ConstByteArray const  address_;         ///< Our muddle address
-  crypto::bls::Id const id_;              ///< Our BLS ID (derived from the muddle address)
-  ConstByteArray const  dealer_address_;  ///< The address of the dealer
-  bool const            is_dealer_;       ///< Flag to signal if we are the dealer
-  Endpoint &            endpoint_;        ///< The muddle endpoint to communicate on
-  muddle::rpc::Server   rpc_server_;      ///< The services' RPC server
-  muddle::rpc::Client   rpc_client_;      ///< The services' RPC client
-  RpcProtocolPtr        rpc_proto_;       ///< The services RPC protocol
-  StateMachinePtr       state_machine_;   ///< The service state machine
+  ConstByteArray const address_;  ///< Our muddle address
+  // crypto::bls::Id const id_;              ///< Our BLS ID (derived from the muddle address)
+  // ConstByteArray const  dealer_address_;  ///< The address of the dealer
+  // bool const            is_dealer_;       ///< Flag to signal if we are the dealer
+  Endpoint &          endpoint_;       ///< The muddle endpoint to communicate on
+  muddle::rpc::Server rpc_server_;     ///< The services' RPC server
+  muddle::rpc::Client rpc_client_;     ///< The services' RPC client
+  RpcProtocolPtr      rpc_proto_;      ///< The services RPC protocol
+  StateMachinePtr     state_machine_;  ///< The service state machine
+  DKG                 dkg_;            ///< Runs DKG protocol
+  rbc::RBC            rbc_;            ///< Runs the RBC protocol
 
   /// @name State Machine Data
   /// @{

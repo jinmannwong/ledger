@@ -105,15 +105,14 @@ char const *ToString(DkgService::State state)
  * @param address The muddle endpoint address
  * @param dealer_address The dealer address
  */
-DkgService::DkgService(Endpoint &endpoint, ConstByteArray address, ConstByteArray dealer_address)
+DkgService::DkgService(Endpoint &endpoint, ConstByteArray address)
   : address_{std::move(address)}
-  , id_{CreateIdFromAddress(address_)}
-  , dealer_address_{std::move(dealer_address)}
-  , is_dealer_{address_ == dealer_address_}
   , endpoint_{endpoint}
   , rpc_server_{endpoint_, SERVICE_DKG, CHANNEL_RPC}
   , rpc_client_{"dkg", endpoint_, SERVICE_DKG, CHANNEL_RPC}
   , state_machine_{std::make_shared<StateMachine>("dkg", State::BUILD_AEON_KEYS, ToString)}
+  , rbc_{endpoint_, address_, current_cabinet_, current_threshold_, *this}
+  , dkg_{address_, current_cabinet_, current_threshold_, *this}
 {
   // RPC server registration
   rpc_proto_ = std::make_unique<DkgRpcProtocol>(*this);
@@ -124,7 +123,6 @@ DkgService::DkgService(Endpoint &endpoint, ConstByteArray address, ConstByteArra
   state_machine_->RegisterHandler(State::BUILD_AEON_KEYS,     this, &DkgService::OnBuildAeonKeysState);
   state_machine_->RegisterHandler(State::REQUEST_SECRET_KEY,  this, &DkgService::OnRequestSecretKeyState);
   state_machine_->RegisterHandler(State::WAIT_FOR_SECRET_KEY, this, &DkgService::OnWaitForSecretKeyState);
-  state_machine_->RegisterHandler(State::BROADCAST_SIGNATURE, this, &DkgService::OnBroadcastSignatureState);
   state_machine_->RegisterHandler(State::COLLECT_SIGNATURES,  this, &DkgService::OnCollectSignaturesState);
   state_machine_->RegisterHandler(State::COMPLETE,            this, &DkgService::OnCompleteState);
   // clang-format on
@@ -181,6 +179,25 @@ void DkgService::SubmitSignatureShare(uint64_t round, crypto::bls::Id const &id,
 }
 
 /**
+ * RPC Handler: Secret share submission
+ *
+ * @param address The address of the shares owner
+ * @param shares The pair of secret shares to be submitted
+ */
+void DkgService::SubmitShare(MuddleAddress const &                      address,
+                             std::pair<std::string, std::string> const &shares)
+{
+  dkg_.OnNewShares(address, shares);
+}
+
+void DkgService::SendShares(MuddleAddress const &                      destination,
+                            std::pair<std::string, std::string> const &shares)
+{
+  rpc_client_.CallSpecificAddress(destination, RPC_DKG_BEACON, DkgRpcProtocol::SUBMIT_SHARE,
+                                  address_, shares);
+}
+
+/**
  * Generate entropy for a given block, identified by digest and block number
  *
  * @param block_digest The block digest
@@ -188,12 +205,6 @@ void DkgService::SubmitSignatureShare(uint64_t round, crypto::bls::Id const &id,
  * @param entropy The output entropy value
  * @return The associated status result for the operation
  */
-
-void DkgService::SubmitShare(MuddleAddress const &address, std::pair<std::string, std::string> const &shares)
-{
-   //dkg_.onNewShares(address, shares);
-}
-
 DkgService::Status DkgService::GenerateEntropy(Digest block_digest, uint64_t block_number,
                                                uint64_t &entropy)
 {
@@ -227,15 +238,17 @@ DkgService::Status DkgService::GenerateEntropy(Digest block_digest, uint64_t blo
  */
 State DkgService::OnBuildAeonKeysState()
 {
-  if (is_dealer_)
-  {
-    BuildAeonKeys();
+  /*
+if (is_dealer_)
+{
+  BuildAeonKeys();
 
-    // since we are the dealer we do not need to request a signature from ourselves
-    return State::BROADCAST_SIGNATURE;
-  }
+  // since we are the dealer we do not need to request a signature from ourselves
+  return State::BROADCAST_SIGNATURE;
+}
 
-  return State::REQUEST_SECRET_KEY;
+return State::REQUEST_SECRET_KEY;
+   */
 }
 
 /**
@@ -245,11 +258,13 @@ State DkgService::OnBuildAeonKeysState()
  */
 State DkgService::OnRequestSecretKeyState()
 {
-  // request from the beacon for the secret key
-  pending_promise_ = rpc_client_.CallSpecificAddress(dealer_address_, RPC_DKG_BEACON,
-                                                     DkgRpcProtocol::REQUEST_SECRET, address_);
+  /*
+// request from the beacon for the secret key
+pending_promise_ = rpc_client_.CallSpecificAddress(dealer_address_, RPC_DKG_BEACON,
+                                                   DkgRpcProtocol::REQUEST_SECRET, address_);
 
-  return State::WAIT_FOR_SECRET_KEY;
+return State::WAIT_FOR_SECRET_KEY;
+   */
 }
 
 /**
@@ -305,65 +320,6 @@ State DkgService::OnWaitForSecretKeyState()
   if (waiting)
   {
     state_machine_->Delay(500ms);
-  }
-
-  return next_state;
-}
-
-/**
- * State Handler for BROADCAST_SIGNATURE
- *
- * @return The next state to progress to
- */
-State DkgService::OnBroadcastSignatureState()
-{
-  State next_state{State::COLLECT_SIGNATURES};
-
-  auto const this_round = current_round_.load();
-
-  FETCH_LOG_DEBUG(LOGGING_NAME, "OnBroadcastSignatureState round: ", this_round);
-
-  // lookup / determine the payload we are expecting with the message
-  ConstByteArray payload{};
-  if (this_round == 0)
-  {
-    payload = GENESIS_PAYLOAD;
-  }
-  else
-  {
-    if (!GetSignaturePayload(this_round - 1u, payload))
-    {
-      FETCH_LOG_CRITICAL(LOGGING_NAME,
-                         "Failed to lookup previous rounds signature data for broadcast");
-      state_machine_->Delay(500ms);
-      return State::BROADCAST_SIGNATURE;  // keep in a loop
-    }
-  }
-
-  FETCH_LOG_DEBUG(LOGGING_NAME, "Payload: ", payload.ToBase64(), " (round: ", this_round, ")");
-
-  // create the signature
-  auto signature = crypto::bls::Sign(aeon_secret_share_, payload);
-
-  FETCH_LOCK(cabinet_lock_);
-  for (auto const &member : current_cabinet_)
-  {
-    if (member == address_)
-    {
-      // we do not need to RPC call to ourselves we can simply provide the signature submission
-      FETCH_LOCK(round_lock_);
-      pending_signatures_.emplace_back(
-          Submission{this_round, id_, aeon_share_public_key_, signature});
-    }
-    else
-    {
-      FETCH_LOG_TRACE(LOGGING_NAME, "Submitting Signature to: ", member.ToBase64());
-
-      // submit the signature to the cabinet member
-      rpc_client_.CallSpecificAddress(member, RPC_DKG_BEACON, DkgRpcProtocol::SUBMIT_SIGNATURE,
-                                      current_round_.load(), id_, aeon_share_public_key_,
-                                      signature);
-    }
   }
 
   return next_state;
@@ -514,52 +470,6 @@ State DkgService::OnCompleteState()
   state_machine_->Delay(500ms);
 
   return State::COMPLETE;
-}
-
-/**
- * Builds a new set of keys for the aeon
- *
- * @return true if successful, otherwise false
- */
-bool DkgService::BuildAeonKeys()
-{
-  FETCH_LOG_DEBUG(LOGGING_NAME, "Build new aeons key shares");
-
-  FETCH_LOCK(cabinet_lock_);
-  FETCH_LOCK(dealer_lock_);
-
-  // generate the master key
-  crypto::bls::PrivateKeyList master_key(current_threshold_);
-  for (auto &key : master_key)
-  {
-    key = crypto::bls::PrivateKeyByCSPRNG();
-  }
-
-  // generate the corresponding shared public key
-  shared_public_key_ = crypto::bls::GetPublicKey(master_key[0]);
-
-  // build a secret share for each of the
-  current_cabinet_secrets_.clear();
-  for (auto const &member : current_cabinet_)
-  {
-    // use the unique muddle address to form the id
-    auto const id = CreateIdFromAddress(member);
-
-    // create the secret share based on the member id
-    auto const secret_share = crypto::bls::PrivateKeyShare(master_key, id);
-
-    if (member == address_)
-    {
-      aeon_secret_share_     = secret_share;
-      aeon_share_public_key_ = crypto::bls::GetPublicKey(aeon_secret_share_);
-      aeon_public_key_       = shared_public_key_;
-    }
-
-    // update the cabinet map
-    current_cabinet_secrets_[member] = secret_share;
-  }
-
-  return true;
 }
 
 /**
