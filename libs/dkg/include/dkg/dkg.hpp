@@ -67,6 +67,7 @@ class DKG
   DkgService &    dkg_service_;
 
   // What the DKG should return
+  std::atomic<bool>       finished_{false};
   bn::Fr                  x_i, xprime_i;
   bn::G2                  y_;
   std::vector<bn::G2>     y_i, v_i;
@@ -199,6 +200,7 @@ public:
   void ResetCabinet();
   void OnNewShares(MuddleAddress from_id, std::pair<MsgShare, MsgShare> const &shares);
   void OnDkgMessage(MuddleAddress const &from, std::shared_ptr<DKGMessage> msg_ptr);
+  bool finished() const;
 
   std::string GroupPublicKey() const
   {

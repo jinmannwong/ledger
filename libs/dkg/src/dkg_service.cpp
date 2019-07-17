@@ -268,64 +268,82 @@ State DkgService::OnBuildAeonKeysState()
   return State::WAIT_FOR_DKG_COMPLETION;
 }
 
-
 /**
- * State Handler for WAIT_FOR_SECRET_KEY
+ * State Handler for WAIT_FOR_DKG_COMPLETION
  *
  * @return The next state to progress to
  */
-State DkgService::OnWaitForSecretKeyState()
+State DkgService::OnWaitForDkgCompletionState()
 {
-  State next_state{State::WAIT_FOR_SECRET_KEY};
-
-  FETCH_LOG_DEBUG(LOGGING_NAME, "State: Wait for secret");
-
-  bool waiting{true};
-
-  if (pending_promise_)
+  if (!dkg_.finished())
   {
-    auto const current_state = pending_promise_->state();
+    state_machine_->Delay(500ms);
+    return State::WAIT_FOR_DKG_COMPLETION;
+  } else
+  {
 
-    switch (current_state)
-    {
-    case PromiseState::WAITING:
-      break;
-    case PromiseState::SUCCESS:
-    {
-      auto const response = pending_promise_->As<SecretKeyReq>();
+    return State::BROADCAST_SIGNATURE;
+  }
+}
 
-      if (response.success)
+/**
+ * State Handler for BROADCAST_SIGNATURE
+ *
+ * @return The next state to progress to
+ */
+    State DkgService::OnBroadcastSignatureState()
+    {
+      State next_state{State::COLLECT_SIGNATURES};
+
+      auto const this_round = current_round_.load();
+
+      FETCH_LOG_DEBUG(LOGGING_NAME, "OnBroadcastSignatureState round: ", this_round);
+
+      // lookup / determine the payload we are expecting with the message
+      ConstByteArray payload{};
+      if (this_round == 0)
       {
-        next_state             = State::BROADCAST_SIGNATURE;
-        waiting                = false;
-        aeon_secret_share_     = response.secret_share;
-        aeon_share_public_key_ = crypto::bls::GetPublicKey(aeon_secret_share_);
-        aeon_public_key_       = response.shared_public_key;
-        pending_promise_.reset();
+        payload = GENESIS_PAYLOAD;
       }
       else
       {
-        FETCH_LOG_INFO(LOGGING_NAME, "Response unsuccessful, retrying");
-        next_state = State::REQUEST_SECRET_KEY;
+        if (!GetSignaturePayload(this_round - 1u, payload))
+        {
+          FETCH_LOG_CRITICAL(LOGGING_NAME,
+                             "Failed to lookup previous rounds signature data for broadcast");
+          state_machine_->Delay(500ms);
+          return State::BROADCAST_SIGNATURE;  // keep in a loop
+        }
       }
 
-      break;
-    }
-    case PromiseState::FAILED:
-    case PromiseState::TIMEDOUT:
-      FETCH_LOG_INFO(LOGGING_NAME, "Response timed out, retrying");
-      next_state = State::REQUEST_SECRET_KEY;
-      break;
-    }
-  }
+      FETCH_LOG_DEBUG(LOGGING_NAME, "Payload: ", payload.ToBase64(), " (round: ", this_round, ")");
 
-  if (waiting)
-  {
-    state_machine_->Delay(500ms);
-  }
+      // create the signature
+      auto signature = crypto::bls::Sign(aeon_secret_share_, payload);
 
-  return next_state;
-}
+      FETCH_LOCK(cabinet_lock_);
+      for (auto const &member : current_cabinet_)
+      {
+        if (member == address_)
+        {
+          // we do not need to RPC call to ourselves we can simply provide the signature submission
+          FETCH_LOCK(round_lock_);
+          pending_signatures_.emplace_back(
+                  Submission{this_round, id_, aeon_share_public_key_, signature});
+        }
+        else
+        {
+          FETCH_LOG_TRACE(LOGGING_NAME, "Submitting Signature to: ", member.ToBase64());
+
+          // submit the signature to the cabinet member
+          rpc_client_.CallSpecificAddress(member, RPC_DKG_BEACON, DkgRpcProtocol::SUBMIT_SIGNATURE,
+                                          current_round_.load(), id_, aeon_share_public_key_,
+                                          signature);
+        }
+      }
+
+      return next_state;
+    }
 
 /**
  * State Handler for COLLECT_SIGNATURES

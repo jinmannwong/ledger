@@ -64,6 +64,7 @@ void DKG::ResetCabinet()
 {
   assert((threshold_ * 2) < cabinet_.size());
   assert(cabinet_.find(address_) != cabinet_.end());  // We should be in the cabinet
+  finished_ = false;
   state_         = State::INITIAL;
   cabinet_index_ = static_cast<uint32_t>(std::distance(cabinet_.begin(), cabinet_.find(address_)));
   Init(y_i, cabinet_.size());
@@ -679,7 +680,7 @@ void DKG::OnReconstructionShares(const std::shared_ptr<SharesMessage> &shares_pt
     else
     {
       ComputePublicKeys();
-      dkg_service_.dkg_completed = true;
+      finished_ = true;
       Clear();
     }
   }
@@ -763,6 +764,11 @@ void DKG::Clear()
   complaint_answers_received.clear();
   qual_complaints_received.clear();
   msg_counter_.Clear();
+}
+
+bool DKG::finished() const
+{
+ return finished_.load();
 }
 }  // namespace dkg
 }  // namespace fetch

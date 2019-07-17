@@ -164,15 +164,6 @@ public:
   }
   void SendShares(MuddleAddress const &                      destination,
                   std::pair<std::string, std::string> const &shares);
-  void StartDkg()
-  {
-    dkg_.BroadcastShares();
-  }
-
-  std::string GroupPublicKey() const
-  {
-    return dkg_.GroupPublicKey();
-  }
   /// @}
 
   // Operators
@@ -195,16 +186,16 @@ private:
   using SignaturePtr    = std::unique_ptr<crypto::bls::Signature>;
   using SignatureMap    = std::map<uint64_t, SignaturePtr>;
   using RoundMap        = std::map<uint64_t, RoundPtr>;
-  using PrivateKey      = crypto::bls::PrivateKey;
-  using PublicKey       = crypto::bls::PublicKey;
+  using PrivateKey      = bn::Fr;
+  using PublicKey       = bn::G2;
   using PublicKeyList   = crypto::bls::PublicKeyList;
 
   struct Submission
   {
     uint64_t               round;
-    crypto::bls::Id        id;
-    crypto::bls::PublicKey public_key;
-    crypto::bls::Signature signature;
+    uint32_t        id;
+    bn::G2 public_key;
+    bn::G1 signature;
   };
 
   using SubmissionList = std::deque<Submission>;
@@ -212,6 +203,8 @@ private:
   /// @name State Handlers
   /// @{
   State OnBuildAeonKeysState();
+  State OnWaitForDkgCompletionState();
+  State OnBroadcastSignatureState();
   State OnCollectSignaturesState();
   State OnCompleteState();
   /// @}
@@ -223,7 +216,7 @@ private:
   /// @}
 
   ConstByteArray const  address_;         ///< Our muddle address
-  crypto::bls::Id const id_;              ///< Our BLS ID (derived from the muddle address)
+  uint32_t id_;                           ///< Our DKG ID (derived from index in current_cabinet_)
   Endpoint &            endpoint_;        ///< The muddle endpoint to communicate on
   muddle::rpc::Server   rpc_server_;      ///< The services' RPC server
   muddle::rpc::Client   rpc_client_;      ///< The services' RPC client
