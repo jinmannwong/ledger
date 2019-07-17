@@ -125,7 +125,7 @@ public:
   using ConstByteArray = byte_array::ConstByteArray;
   using MuddleAddress  = ConstByteArray;
   using CabinetMembers = std::set<MuddleAddress>;
-  using RBCMessageType = std::string;
+  using RBCMessageType = DKGEnvelop;
 
   // Construction / Destruction
   explicit DkgService(Endpoint &endpoint, ConstByteArray address);
@@ -172,22 +172,8 @@ public:
     dkg_.ResetCabinet();
     rbc_.ResetCabinet();
   }
-  void SendReliableBroadcast(DKGEnvelop const &env)
-  {
-    DKGSerializer serialiser;
-    env.Serialize(serialiser);
-    rbc_.SendRBroadcast(serialiser.data());
-  }
   void SendShares(MuddleAddress const &                      destination,
                   std::pair<std::string, std::string> const &shares);
-
-  void OnRbcDeliver(MuddleAddress const &from, byte_array::ConstByteArray const &payload)
-  {
-      DKGEnvelop    env;
-      DKGSerializer serializer{payload};
-      serializer >> env;
-    dkg_.OnDkgMessage(from, env.Message());
-  }
   void StartDkg()
   {
     dkg_.BroadcastShares();
