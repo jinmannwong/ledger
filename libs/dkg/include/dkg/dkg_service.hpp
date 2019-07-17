@@ -138,6 +138,18 @@ public:
   void SubmitShare(MuddleAddress const &address, std::pair<std::string, std::string> const &shares);
   void SendReliableBroadcast(RBCMessageType const &msg);
   void OnRbcDeliver(MuddleAddress const &from, byte_array::ConstByteArray const &payload);
+  void StartDkg()
+  {
+    dkg_.BroadcastShares();
+  }
+  bool DkgCompleted()
+  {
+    return dkg_.finished();
+  }
+  std::string GroupPublicKey()
+  {
+    return dkg_.public_key();
+  }
   /// @}
 
   /// @name Entropy Generator

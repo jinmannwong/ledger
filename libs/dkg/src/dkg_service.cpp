@@ -231,7 +231,7 @@ State DkgService::OnWaitForDkgCompletionState()
 {
   if (!dkg_.finished())
   {
-    state_machine_->Delay(500ms);
+    state_machine_->Delay(5000ms);
     return State::WAIT_FOR_DKG_COMPLETION;
   }
   else
