@@ -175,7 +175,6 @@ protected:
 class RBroadcast : public RMessage
 {
 public:
-
   // Construction/Destruction
   explicit RBroadcast(uint16_t channel, uint32_t id, uint8_t counter, SerialisedMessage msg)
     : RMessage{channel, id, counter, std::move(msg), MessageType::RBROADCAST} {};
@@ -190,7 +189,6 @@ public:
 class REcho : public RHash
 {
 public:
-
   // Construction/Destruction
   explicit REcho(uint16_t channel, uint32_t id, uint8_t counter, TruncatedHash msg_hash)
     : RHash{channel, id, counter, std::move(msg_hash), MessageType::RECHO} {};
@@ -205,7 +203,6 @@ public:
 class RReady : public RHash
 {
 public:
-
   // Construction/Destruction
   explicit RReady(uint16_t channel, uint32_t id, uint8_t counter, TruncatedHash msg_hash)
     : RHash{channel, id, counter, std::move(msg_hash), MessageType::RREADY} {};
@@ -220,7 +217,6 @@ public:
 class RRequest : public RBCMessage
 {
 public:
-
   // Constuction/Destruction
   explicit RRequest(uint16_t channel, uint32_t id, uint8_t counter)
     : RBCMessage{channel, id, counter, MessageType::RREQUEST} {};
@@ -242,7 +238,6 @@ public:
 class RAnswer : public RMessage
 {
 public:
-
   // Construction/Destruction
   explicit RAnswer(uint16_t channel, uint32_t id, uint8_t counter, SerialisedMessage msg)
     : RMessage{channel, id, counter, std::move(msg), MessageType::RANSWER} {};
