@@ -51,7 +51,7 @@ void UpdateRHS(uint32_t rank, bn::G2 &rhsG, std::vector<bn::G2> const &input)
   bn::Fr tmpF{1};
   bn::G2 tmpG;
   tmpG.clear();
-  assert(input.empty());
+  assert(!input.empty());
   for (uint32_t k = 1; k < input.size(); k++)
   {
     bn::Fr::pow(tmpF, rank + 1, k);  // adjust index $i$ in computation
@@ -66,7 +66,7 @@ bn::G2 ComputeRHS(uint32_t rank, std::vector<bn::G2> const &input)
   bn::G2 tmpG, rhsG;
   tmpG.clear();
   rhsG.clear();
-  assert(input.empty());
+  assert(!input.empty());
   // initialize rhsG
   rhsG = input[0];
   UpdateRHS(rank, rhsG, input);
@@ -78,7 +78,7 @@ void ComputeShares(bn::Fr &s_i, bn::Fr &sprime_i, std::vector<bn::Fr> const &a_i
 {
   bn::Fr pow, tmpF;
   assert(a_i.size() == b_i.size());
-  assert(a_i.empty());
+  assert(!a_i.empty());
   s_i      = a_i[0];
   sprime_i = b_i[0];
   for (uint32_t k = 1; k < a_i.size(); k++)
@@ -226,7 +226,7 @@ bool VerifySign(bn::G2 const &y, byte_array::ConstByteArray const &message, bn::
 
 bn::G1 LagrangeInterpolation(std::unordered_map<uint32_t, bn::G1> const &shares)
 {
-  assert(shares.empty());
+  assert(!shares.empty());
   if (shares.size() == 1)
   {
     return shares.begin()->second;
