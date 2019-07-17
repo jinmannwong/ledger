@@ -43,6 +43,9 @@ public:
     COMPLAINT
   };
 
+  // Destruction
+  virtual ~DKGMessage() = default;
+
   MessageType type() const
   {
     return type_;
@@ -57,7 +60,7 @@ protected:
   const MessageType type_;
   MsgSignature      signature_;
 
-  // Constructors
+  // Construction
   explicit DKGMessage(MessageType type)
     : type_{type} {};
   explicit DKGMessage(MessageType type, MsgSignature sig)
@@ -72,7 +75,7 @@ class CoefficientsMessage : public DKGMessage
 
 public:
 
-  //Constructors
+  //Construction/Destruction
   explicit CoefficientsMessage(DKGSerializer &serialiser)
     : DKGMessage{MessageType::COEFFICIENT}
   {
@@ -82,6 +85,7 @@ public:
     : DKGMessage{MessageType::COEFFICIENT, std::move(sig)}
     , phase_{phase}
     , coefficients_{std::move(coeff)} {};
+  ~CoefficientsMessage() override = default;
 
   DKGSerializer Serialize() const override
   {
@@ -107,7 +111,7 @@ class SharesMessage : public DKGMessage
       shares_;  ///< Shares for a particular committee member
 public:
 
-  // Constructors
+  // Construction/Destruction
   explicit SharesMessage(DKGSerializer &serialiser)
     : DKGMessage{MessageType::SHARE}
   {
@@ -119,6 +123,7 @@ public:
     : DKGMessage{MessageType::SHARE, std::move(sig)}
     , phase_{phase}
     , shares_{std::move(shares)} {};
+  ~SharesMessage() override = default;
 
   DKGSerializer Serialize() const override
   {
@@ -142,7 +147,7 @@ class ComplaintsMessage : public DKGMessage
       complaints_;  ///< Committee members that you are complaining against
 public:
 
-  //Constructors
+  // Construction/Destruction
   explicit ComplaintsMessage(DKGSerializer &serialiser)
     : DKGMessage{MessageType::COMPLAINT}
   {
@@ -151,6 +156,7 @@ public:
   explicit ComplaintsMessage(std::unordered_set<CabinetId> complaints, MsgSignature sig)
     : DKGMessage{MessageType::COMPLAINT, std::move(sig)}
     , complaints_{std::move(complaints)} {};
+  ~ComplaintsMessage() override = default;
 
   DKGSerializer Serialize() const override
   {
@@ -171,7 +177,7 @@ class DKGEnvelop
 
 public:
 
-  //Constructors
+  //Construction
   DKGEnvelop() = default;
   explicit DKGEnvelop(const DKGMessage &msg)
     : type_{msg.type()}
