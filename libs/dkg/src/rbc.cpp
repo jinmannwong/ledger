@@ -328,7 +328,7 @@ void RBC::OnREcho(const std::shared_ptr<REcho> msg_ptr, uint32_t sender_index)
     return;
   }
   FETCH_LOG_TRACE(LOGGING_NAME, "onREcho: Node ", id_, " received msg ", tag, " from node ",
-                 sender_index, " with counter ", msg_ptr->counter(), " and id ", msg_ptr->id());
+                  sender_index, " with counter ", msg_ptr->counter(), " and id ", msg_ptr->id());
   if (ReceivedEcho(tag, msg_ptr))
   {
     RBCEnvelop env{RReady{msg_ptr->channel(), msg_ptr->id(), msg_ptr->counter(), msg_ptr->hash()}};
@@ -356,7 +356,7 @@ void RBC::OnRReady(const std::shared_ptr<RReady> msg_ptr, uint32_t sender_index)
     return;
   }
   FETCH_LOG_TRACE(LOGGING_NAME, "onRReady: Node ", id_, " received msg ", tag, " from node ",
-                 sender_index, " with counter ", msg_ptr->counter(), " and id ", msg_ptr->id());
+                  sender_index, " with counter ", msg_ptr->counter(), " and id ", msg_ptr->id());
   auto msgsCount = ReceivedReady(tag, msg_ptr);
   if (threshold_ > 0 and msgsCount.ready_count == threshold_ + 1 and
       msgsCount.echo_count < (current_cabinet_.size() - threshold_))
@@ -414,7 +414,7 @@ void RBC::OnRRequest(const std::shared_ptr<RRequest> msg_ptr, uint32_t sender_in
     return;
   }
   FETCH_LOG_TRACE(LOGGING_NAME, "onRRequest: Node ", id_, " received msg ", tag, " from node ",
-                 sender_index, " with counter ", msg_ptr->counter(), " and id ", msg_ptr->id());
+                  sender_index, " with counter ", msg_ptr->counter(), " and id ", msg_ptr->id());
   if (!broadcasts_[tag].mbar.empty())
   {
     RBCEnvelop env{
