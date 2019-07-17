@@ -125,6 +125,7 @@ public:
   using ConstByteArray = byte_array::ConstByteArray;
   using MuddleAddress  = ConstByteArray;
   using CabinetMembers = std::set<MuddleAddress>;
+  using RBCMessageType = std::string;
 
   // Construction / Destruction
   explicit DkgService(Endpoint &endpoint, ConstByteArray address);
@@ -147,6 +148,8 @@ public:
                             crypto::bls::Signature const &signature);
 
   void SubmitShare(MuddleAddress const &address, std::pair<std::string, std::string> const &shares);
+  void SendReliableBroadcast(RBCMessageType const &msg);
+  void OnRbcDeliver(MuddleAddress const &from, byte_array::ConstByteArray const &payload);
   /// @}
 
   /// @name Entropy Generator
@@ -246,23 +249,23 @@ private:
   RoundPtr LookupRound(uint64_t round, bool create = false);
   /// @}
 
-  ConstByteArray const address_;  ///< Our muddle address
-  // crypto::bls::Id const id_;              ///< Our BLS ID (derived from the muddle address)
-  // ConstByteArray const  dealer_address_;  ///< The address of the dealer
-  // bool const            is_dealer_;       ///< Flag to signal if we are the dealer
-  Endpoint &          endpoint_;       ///< The muddle endpoint to communicate on
-  muddle::rpc::Server rpc_server_;     ///< The services' RPC server
-  muddle::rpc::Client rpc_client_;     ///< The services' RPC client
-  RpcProtocolPtr      rpc_proto_;      ///< The services RPC protocol
-  StateMachinePtr     state_machine_;  ///< The service state machine
+  ConstByteArray const  address_;         ///< Our muddle address
+  crypto::bls::Id const id_;              ///< Our BLS ID (derived from the muddle address)
+  ConstByteArray const  dealer_address_;  ///< The address of the dealer
+  bool const            is_dealer_;       ///< Flag to signal if we are the dealer
+  Endpoint &            endpoint_;        ///< The muddle endpoint to communicate on
+  muddle::rpc::Server   rpc_server_;      ///< The services' RPC server
+  muddle::rpc::Client   rpc_client_;      ///< The services' RPC client
+  RpcProtocolPtr        rpc_proto_;       ///< The services RPC protocol
+  StateMachinePtr       state_machine_;   ///< The service state machine
+  rbc::RBC              rbc_;             ///< Runs the RBC protocol
   DKG                 dkg_;            ///< Runs DKG protocol
-  rbc::RBC            rbc_;            ///< Runs the RBC protocol
 
   /// @name State Machine Data
   /// @{
   Promise    pending_promise_;          ///< The cached pending promise
   PrivateKey aeon_secret_share_{};      ///< The current secret share for the aeon
-  PublicKey  aeon_share_public_key_{};  /// < The shared public key for the aeon
+  PublicKey  aeon_share_public_key_{};  ///< The shared public key for the aeon
   PublicKey  aeon_public_key_{};        ///< The public key for our secret share
   /// @}
 

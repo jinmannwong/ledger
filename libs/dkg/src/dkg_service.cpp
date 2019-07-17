@@ -160,6 +160,24 @@ DkgService::SecretKeyReq DkgService::RequestSecretKey(MuddleAddress const &addre
   return req;
 }
 
+
+   /** RPC Handler: Secret share submission
+    *
+    * @param address The address of the shares owner
+    * @param shares The pair of secret shares to be submitted
+    */
+    void DkgService::SubmitShare(MuddleAddress const &                      address,
+                                 std::pair<std::string, std::string> const &shares)
+    {
+      dkg_.OnNewShares(address, shares);
+    }
+
+    void DkgService::SendShares(MuddleAddress const &                      destination,
+                                std::pair<std::string, std::string> const &shares) {
+      rpc_client_.CallSpecificAddress(destination, RPC_DKG_BEACON, DkgRpcProtocol::SUBMIT_SHARE,
+                                      address_, shares);
+    }
+
 /**
  * RPC Handler: Signature submission
  *
@@ -179,22 +197,27 @@ void DkgService::SubmitSignatureShare(uint64_t round, crypto::bls::Id const &id,
 }
 
 /**
- * RPC Handler: Secret share submission
+ * Send a message using the reliable broadcast protocol
  *
- * @param address The address of the shares owner
- * @param shares The pair of secret shares to be submitted
+ * @param msg Serialised message
  */
-void DkgService::SubmitShare(MuddleAddress const &                      address,
-                             std::pair<std::string, std::string> const &shares)
+void DkgService::SendReliableBroadcast(RBCMessageType const &msg)
 {
-  dkg_.OnNewShares(address, shares);
+  rbc_.SendRBroadcast(msg);
 }
 
-void DkgService::SendShares(MuddleAddress const &                      destination,
-                            std::pair<std::string, std::string> const &shares)
+/**
+ * Handler for messages which have completed RBC protocol
+ *
+ * @param from Muddle address of the sender of the message
+ * @param payload Serialised message
+ */
+void DkgService::OnRbcDeliver(MuddleAddress const &from, byte_array::ConstByteArray const &payload)
 {
-  rpc_client_.CallSpecificAddress(destination, RPC_DKG_BEACON, DkgRpcProtocol::SUBMIT_SHARE,
-                                  address_, shares);
+  DKGEnvelop    env;
+  DKGSerializer serializer{payload};
+  serializer >> env;
+  dkg_.OnDkgMessage(from, env.Message());
 }
 
 /**
@@ -238,7 +261,6 @@ DkgService::Status DkgService::GenerateEntropy(Digest block_digest, uint64_t blo
  */
 State DkgService::OnBuildAeonKeysState()
 {
-  /*
 if (is_dealer_)
 {
   BuildAeonKeys();
@@ -248,7 +270,6 @@ if (is_dealer_)
 }
 
 return State::REQUEST_SECRET_KEY;
-   */
 }
 
 /**
@@ -258,13 +279,12 @@ return State::REQUEST_SECRET_KEY;
  */
 State DkgService::OnRequestSecretKeyState()
 {
-  /*
 // request from the beacon for the secret key
 pending_promise_ = rpc_client_.CallSpecificAddress(dealer_address_, RPC_DKG_BEACON,
                                                    DkgRpcProtocol::REQUEST_SECRET, address_);
 
 return State::WAIT_FOR_SECRET_KEY;
-   */
+
 }
 
 /**

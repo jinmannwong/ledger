@@ -70,14 +70,14 @@ RBC::RBC(Endpoint &endpoint, MuddleAddress address, CabinetMembers const &cabine
   : address_{std::move(address)}
   , endpoint_{endpoint}
   , current_cabinet_{cabinet}
-  , rbc_subscription_(endpoint.Subscribe(SERVICE_DKG, CHANNEL_BROADCAST))
   , threshold_{threshold}
   , dkg_service_{dkg_service}
+  , rbc_subscription_(endpoint.Subscribe(SERVICE_DKG, CHANNEL_BROADCAST))
 {
   // Set subscription for rbc
   rbc_subscription_->SetMessageHandler([this](MuddleAddress const &from, uint16_t, uint16_t,
                                               uint16_t, muddle::Packet::Payload const &payload,
-                                              MuddleAddress transmitter) {
+                                              MuddleAddress) {
     RBCSerializer serialiser(payload);
 
     // Deserialize the RBCEnvelop
@@ -95,8 +95,7 @@ RBC::RBC(Endpoint &endpoint, MuddleAddress address, CabinetMembers const &cabine
 void RBC::ResetCabinet()
 {
   assert(!current_cabinet_.empty());
-  auto it{current_cabinet_.find(address_)};
-  assert(it != current_cabinet_.end());
+  assert(current_cabinet_.find(address_) != current_cabinet_.end());
   assert(current_cabinet_.size() > 3 * threshold_);
   std::lock_guard<std::mutex> lock{mutex_broadcast_};
   id_ = static_cast<uint32_t>(
@@ -152,7 +151,7 @@ void RBC::Broadcast(const RBCEnvelop &env)
  */
 void RBC::SendRBroadcast(const SerialisedMessage &msg)
 {
-  RBCEnvelop env{RBroadcast(CHANNEL_BROADCAST, id_,  ++msg_counter_, msg)};
+  RBCEnvelop env{RBroadcast(CHANNEL_BROADCAST, id_, ++msg_counter_, msg)};
   Broadcast(env);
   OnRBroadcast(std::dynamic_pointer_cast<RBroadcast>(env.Message()), id_);  // Self sending
 }
@@ -328,7 +327,6 @@ void RBC::OnREcho(const std::shared_ptr<REcho> msg_ptr, uint32_t sender_index)
   if (ReceivedEcho(tag, msg_ptr))
   {
     RBCEnvelop env{RReady{msg_ptr->channel(), msg_ptr->id(), msg_ptr->counter(), msg_ptr->hash()}};
-    FETCH_LOG_INFO(LOGGING_NAME, "Node ", id_, " broadcasts ", MsgTypeToString(MsgType::R_READY), " for tag ", tag);
     Broadcast(env);
     OnRReady(std::dynamic_pointer_cast<RReady>(env.Message()), id_);  // self sending.
   }
@@ -531,7 +529,8 @@ bool RBC::CheckTag(RBCMessage &msg)
                     " does not match tag counter ", msg.counter(), " for node ", msg.id());
     // Store tag of message for processing later
     if (parties_[msg.id()].undelivered_msg.find(msg.counter()) ==
-        parties_[msg.counter()].undelivered_msg.end()) {
+        parties_[msg.counter()].undelivered_msg.end())
+    {
       parties_[msg.id()].undelivered_msg.insert({msg.counter(), msg});
     }
   }
@@ -547,7 +546,7 @@ bool RBC::CheckTag(RBCMessage &msg)
  * @param m Message type of new RBCMessage received
  * @return Bool for whether the message flag for this message type has been set
  */
- bool RBC::SetPartyFlag(uint32_t sender_index, TagType tag, MsgType msg_type)
+bool RBC::SetPartyFlag(uint32_t sender_index, TagType tag, MsgType msg_type)
 {
   std::lock_guard<std::mutex> lock(mutex_flags_);
   auto &                      iter  = parties_[sender_index].flags[tag];
