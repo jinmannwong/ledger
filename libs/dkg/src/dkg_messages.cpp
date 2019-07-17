@@ -37,7 +37,7 @@ std::shared_ptr<DKGMessage> DKGEnvelop::Message() const
     return std::make_shared<ComplaintsMessage>(serialiser);
   default:
     FETCH_LOG_ERROR(LOGGING_NAME, "Can not process payload");
-    assert(false); // For compiler warnings
+    assert(false);  // For compiler warnings
   }
 }
 

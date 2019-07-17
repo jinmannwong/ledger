@@ -74,8 +74,7 @@ class CoefficientsMessage : public DKGMessage
   std::vector<Coefficient> coefficients_;
 
 public:
-
-  //Construction/Destruction
+  // Construction/Destruction
   explicit CoefficientsMessage(DKGSerializer &serialiser)
     : DKGMessage{MessageType::COEFFICIENT}
   {
@@ -110,7 +109,6 @@ class SharesMessage : public DKGMessage
   std::unordered_map<CabinetId, std::pair<Share, Share>>
       shares_;  ///< Shares for a particular committee member
 public:
-
   // Construction/Destruction
   explicit SharesMessage(DKGSerializer &serialiser)
     : DKGMessage{MessageType::SHARE}
@@ -146,7 +144,6 @@ class ComplaintsMessage : public DKGMessage
   std::unordered_set<CabinetId>
       complaints_;  ///< Committee members that you are complaining against
 public:
-
   // Construction/Destruction
   explicit ComplaintsMessage(DKGSerializer &serialiser)
     : DKGMessage{MessageType::COMPLAINT}
@@ -176,8 +173,7 @@ class DKGEnvelop
   using Payload     = byte_array::ConstByteArray;
 
 public:
-
-  //Construction
+  // Construction
   DKGEnvelop() = default;
   explicit DKGEnvelop(const DKGMessage &msg)
     : type_{msg.type()}
