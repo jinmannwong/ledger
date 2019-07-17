@@ -115,26 +115,28 @@ void DKG::OnDkgMessage(MuddleAddress const &from, std::shared_ptr<DKGMessage> ms
   }
 }
 
-void DKG::BroadcastShares()
+void DKG::ReceivedCoefficientsAndShares()
 {
-  std::vector<bn::Fr> a_i(threshold_ + 1, zeroFr_), b_i(threshold_ + 1, zeroFr_);
+  std::lock_guard<std::mutex> lock{mutex_};
+  if ((state_.load() == State::WAITING_FOR_SHARE) &&
+      (msg_counter_.Count(MsgCounter::Message::INITIAL_SHARE) == cabinet_.size() - 1) &&
+      (msg_counter_.Count(MsgCounter::Message::INITIAL_COEFFICIENT)) == cabinet_.size() - 1)
+  {
+    BroadcastComplaints();
+  }
+}
 
-  // 1. Each party $P_i$ performs a Pedersen-VSS of a random
-  //    value $z_i$ as a dealer:
+void DKG::SendCoefficients(std::vector<bn::Fr> const &a_i, std::vector<bn::Fr> const &b_i)
+{
+  // 1. Each party $P_i$ performs a Pedersen-VSS of a random value $z_i$ as a dealer:
   // (a) $P_i$ chooses two random polynomials $f_i(z)$ and
   //     $f\prime_i(z)$ over $\mathbb{Z}_q$ of degree $t$ where
   //     $f_i(z) = a_{i0} + a_{i1}z + \ldots + a_{it}z^t$ and
   //     $f\prime_i(z) = b_{i0} + b_{i1}z + \ldots + b_{it}z^t$
-  for (size_t k = 0; k <= threshold_; k++)
-  {
-    a_i[k].setRand();
-    b_i[k].setRand();
-  }
   // Let $z_i = a_{i0} = f_i(0)$.
   z_i[cabinet_index_] = a_i[0];
   // $P_i$ broadcasts $C_{ik} = g^{a_{ik}} h^{b_{ik}} \bmod p$
   // for $k = 0, \ldots, t$.
-
   std::vector<MsgCoefficient> coefficients;
   for (size_t k = 0; k <= threshold_; k++)
   {
@@ -143,7 +145,11 @@ void DKG::BroadcastShares()
   }
   SendBroadcast(DKGEnvelop{CoefficientsMessage{static_cast<uint8_t>(State::WAITING_FOR_SHARE),
                                                coefficients, "signature"}});
+  ReceivedCoefficientsAndShares();
+}
 
+void DKG::SendShares(std::vector<bn::Fr> const &a_i, std::vector<bn::Fr> const &b_i)
+{
   // $P_i$ computes the shares $s_{ij} = f_i(j) \bmod q$,
   // $s\prime_{ij} = f\prime_i(j) \bmod q$ and
   // sends $s_{ij}$, $s\prime_{ij}$ to party $P_j$.
@@ -159,19 +165,33 @@ void DKG::BroadcastShares()
     }
     ++j;
   }
-  state_ = State::WAITING_FOR_SHARE;
 }
 
-void DKG::BroadcastComplaints()
+void DKG::BroadcastShares()
+{
+  std::vector<bn::Fr> a_i(threshold_ + 1, zeroFr_), b_i(threshold_ + 1, zeroFr_);
+
+  for (size_t k = 0; k <= threshold_; k++)
+  {
+    a_i[k].setRand();
+    b_i[k].setRand();
+  }
+  SendCoefficients(a_i, b_i);
+  SendShares(a_i, b_i);
+  FETCH_LOG_INFO(LOGGING_NAME, "Node ", cabinet_index_, " broadcasts coefficients ");
+  state_.store(State::WAITING_FOR_SHARE);
+  ReceivedCoefficientsAndShares();
+}
+
+std::unordered_set<DKG::MuddleAddress> DKG::ComputeComplaints()
 {
   std::unordered_set<MuddleAddress> complaints_local;
-  assert(complaints_local.empty());
-  uint32_t i = 0;
+  uint32_t                          i = 0;
   for (auto &cab : cabinet_)
   {
     if (i != cabinet_index_)
     {
-      // Can only require this if G, H do not take the default values from clear()
+      // Can only require this if group_g_, group_h_ do not take the default values from clear()
       if (C_ik[i][0] != zeroG2_ && s_ij[i][cabinet_index_] != zeroFr_)
       {
         bn::G2 rhs, lhs;
@@ -190,10 +210,19 @@ void DKG::BroadcastComplaints()
         FETCH_LOG_WARN(LOGGING_NAME, "Node ", cabinet_index_,
                        " received vanishing coefficients/shares from ", i);
         complaints_local.insert(cab);
-        ++complaints_counter[cab];
       }
     }
     ++i;
+  }
+  return complaints_local;
+}
+
+void DKG::BroadcastComplaints()
+{
+  std::unordered_set<MuddleAddress> complaints_local{ComputeComplaints()};
+  for (auto const &cab : complaints_local)
+  {
+    ++complaints_counter[cab];
   }
 
   FETCH_LOG_INFO(LOGGING_NAME, "Node ", cabinet_index_, " broadcasts complaints size ",
@@ -287,17 +316,14 @@ void DKG::BroadcastReconstructionShares()
 
 void DKG::OnNewShares(MuddleAddress from, std::pair<MsgShare, MsgShare> const &shares)
 {
+  FETCH_LOG_INFO(LOGGING_NAME, "Node ", cabinet_index_, " received shares frpm node  ",
+                 CabinetIndex(from));
   uint32_t from_index{CabinetIndex(from)};
   s_ij[from_index][cabinet_index_].setStr(shares.first);
   sprime_ij[from_index][cabinet_index_].setStr(shares.second);
 
   msg_counter_.Increment(MsgCounter::Message::INITIAL_SHARE);
-  if ((state_ == State::WAITING_FOR_SHARE) and
-      (msg_counter_.Count(MsgCounter::Message::INITIAL_SHARE) == cabinet_.size() - 1) and
-      (msg_counter_.Count(MsgCounter::Message::INITIAL_COEFFICIENT)) == cabinet_.size() - 1)
-  {
-    BroadcastComplaints();
-  }
+  ReceivedCoefficientsAndShares();
 }
 
 void DKG::OnNewCoefficients(const std::shared_ptr<CoefficientsMessage> &msg_ptr,
@@ -316,12 +342,7 @@ void DKG::OnNewCoefficients(const std::shared_ptr<CoefficientsMessage> &msg_ptr,
       }
     }
     msg_counter_.Increment(MsgCounter::Message::INITIAL_COEFFICIENT);
-    if ((state_ == State::WAITING_FOR_SHARE) and
-        (msg_counter_.Count(MsgCounter::Message::INITIAL_SHARE) == cabinet_.size() - 1) and
-        (msg_counter_.Count(MsgCounter::Message::INITIAL_COEFFICIENT)) == cabinet_.size() - 1)
-    {
-      BroadcastComplaints();
-    }
+    ReceivedCoefficientsAndShares();
   }
   else if (msg_ptr->phase() == static_cast<uint64_t>(State::WAITING_FOR_QUAL_SHARES))
   {
@@ -364,17 +385,6 @@ void DKG::OnComplaints(const std::shared_ptr<ComplaintsMessage> &msg_ptr,
 
   for (const auto &bad_node : msg_ptr->complaints())
   {
-    /* Obsolete as the message now contains a set
-    // Keep track of the nodes which are included in complaint. If there are duplicates then we add
-    the sender
-    // to complaints
-    if (complaints_from_sender.find(complaint.nodes(ii)) != complaints_from_sender.end()) {
-        complaints.insert(from_id);
-    } else {
-        complaints_from_sender.insert(complaint.nodes(ii));
-        ++complaints_counter[complaint.nodes(ii)];
-    }
-     */
     ++complaints_counter[bad_node];
     // If a node receives complaint against itself then store in complaints from
     // for answering later

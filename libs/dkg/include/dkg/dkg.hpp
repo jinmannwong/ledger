@@ -58,13 +58,13 @@ class DKG
   static bn::G2 group_g_;
   static bn::G2 group_h_;
 
-  CabinetMembers &cabinet_;
-  std::size_t &   threshold_;
-  State           state_{State::INITIAL};
-  std::mutex      mutex_;
-  MuddleAddress   address_;  ///< Our muddle address
-  uint32_t        cabinet_index_;
-  DkgService &    dkg_service_;
+  CabinetMembers &   cabinet_;
+  std::size_t &      threshold_;
+  std::atomic<State> state_{State::INITIAL};
+  std::mutex         mutex_;
+  MuddleAddress      address_;  ///< Our muddle address
+  uint32_t           cabinet_index_;
+  DkgService &       dkg_service_;
 
   // What the DKG should return
   std::atomic<bool>       finished_{false};
@@ -170,6 +170,11 @@ class DKG
   }
 
   uint32_t CabinetIndex(MuddleAddress const &other_address) const;
+
+  void ReceivedCoefficientsAndShares();
+  void SendCoefficients(std::vector<bn::Fr> const &a_i, std::vector<bn::Fr> const &b_i);
+  void SendShares(std::vector<bn::Fr> const &a_i, std::vector<bn::Fr> const &b_i);
+  std::unordered_set<MuddleAddress> ComputeComplaints();
 
   void SendBroadcast(DKGEnvelop const &env);
   void BroadcastComplaints();
