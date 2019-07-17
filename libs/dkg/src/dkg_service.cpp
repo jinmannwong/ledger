@@ -50,18 +50,6 @@ constexpr uint64_t    HISTORY_LENGTH = 10;
 const ConstByteArray GENESIS_PAYLOAD = "=~=~ Genesis ~=~=";
 
 /**
- * Creates a BLS ID from a specified Muddle Address
- *
- * @param address The input muddle address
- * @return The generated BLS ID
- */
-crypto::bls::Id CreateIdFromAddress(ConstByteArray const &address)
-{
-  auto const seed = crypto::bls::HashToPrivateKey(address);
-  return crypto::bls::Id{seed.v};
-}
-
-/**
  * Converts the state enum to a string
  *
  * @param state The state to convert
@@ -76,11 +64,8 @@ char const *ToString(DkgService::State state)
   case DkgService::State::BUILD_AEON_KEYS:
     text = "Build Aeon Keys";
     break;
-  case DkgService::State::REQUEST_SECRET_KEY:
-    text = "Request Secret Key";
-    break;
-  case DkgService::State::WAIT_FOR_SECRET_KEY:
-    text = "Wait for Secret Key";
+  case DkgService::State::WAIT_FOR_DKG_COMPLETION:
+    text = "Wait for DKG Completion";
     break;
   case DkgService::State::BROADCAST_SIGNATURE:
     text = "Broadcast Signature";
@@ -121,62 +106,28 @@ DkgService::DkgService(Endpoint &endpoint, ConstByteArray address)
   // configure the state handlers
   // clang-format off
   state_machine_->RegisterHandler(State::BUILD_AEON_KEYS,     this, &DkgService::OnBuildAeonKeysState);
-  state_machine_->RegisterHandler(State::REQUEST_SECRET_KEY,  this, &DkgService::OnRequestSecretKeyState);
-  state_machine_->RegisterHandler(State::WAIT_FOR_SECRET_KEY, this, &DkgService::OnWaitForSecretKeyState);
+  state_machine_->RegisterHandler(State::WAIT_FOR_DKG_COMPLETION,  this, &DkgService::OnWaitForDkgCompletionState);
   state_machine_->RegisterHandler(State::COLLECT_SIGNATURES,  this, &DkgService::OnCollectSignaturesState);
   state_machine_->RegisterHandler(State::COMPLETE,            this, &DkgService::OnCompleteState);
   // clang-format on
 }
-
-/**
- * RPC Handler: Handler for client secret request
+/** RPC Handler: Secret share submission
  *
- * @param address The muddle address of the requester
- * @return The response structure
+ * @param address The address of the shares owner
+ * @param shares The pair of secret shares to be submitted
  */
-DkgService::SecretKeyReq DkgService::RequestSecretKey(MuddleAddress const &address)
+void DkgService::SubmitShare(MuddleAddress const &                      address,
+                             std::pair<std::string, std::string> const &shares)
 {
-  SecretKeyReq req{};
-
-  FETCH_LOCK(cabinet_lock_);
-  FETCH_LOCK(dealer_lock_);
-
-  auto it = current_cabinet_secrets_.find(address);
-  if (it != current_cabinet_secrets_.end())
-  {
-    FETCH_LOG_INFO(LOGGING_NAME, "Node: ", address.ToBase64(), " requested secret share");
-
-    // populate the request
-    req.success           = true;
-    req.secret_share      = it->second;
-    req.shared_public_key = shared_public_key_;
-  }
-  else
-  {
-    FETCH_LOG_WARN(LOGGING_NAME, "Failed to provide node: ", address.ToBase64(),
-                   " with secret share");
-  }
-
-  return req;
+  dkg_.OnNewShares(address, shares);
 }
 
-
-   /** RPC Handler: Secret share submission
-    *
-    * @param address The address of the shares owner
-    * @param shares The pair of secret shares to be submitted
-    */
-    void DkgService::SubmitShare(MuddleAddress const &                      address,
-                                 std::pair<std::string, std::string> const &shares)
-    {
-      dkg_.OnNewShares(address, shares);
-    }
-
-    void DkgService::SendShares(MuddleAddress const &                      destination,
-                                std::pair<std::string, std::string> const &shares) {
-      rpc_client_.CallSpecificAddress(destination, RPC_DKG_BEACON, DkgRpcProtocol::SUBMIT_SHARE,
-                                      address_, shares);
-    }
+void DkgService::SendShares(MuddleAddress const &                      destination,
+                            std::pair<std::string, std::string> const &shares)
+{
+  rpc_client_.CallSpecificAddress(destination, RPC_DKG_BEACON, DkgRpcProtocol::SUBMIT_SHARE,
+                                  address_, shares);
+}
 
 /**
  * RPC Handler: Signature submission
@@ -186,9 +137,8 @@ DkgService::SecretKeyReq DkgService::RequestSecretKey(MuddleAddress const &addre
  * @param public_key The public key for signature verification
  * @param signature The signature to be submitted
  */
-void DkgService::SubmitSignatureShare(uint64_t round, crypto::bls::Id const &id,
-                                      crypto::bls::PublicKey const &public_key,
-                                      crypto::bls::Signature const &signature)
+void DkgService::SubmitSignatureShare(uint64_t round, uint32_t const &id, bn::G2 const &public_key,
+                                      bn::G1 const &signature)
 {
   FETCH_LOG_TRACE(LOGGING_NAME, "Submit of signature for round ", round);
 
@@ -279,12 +229,17 @@ State DkgService::OnWaitForDkgCompletionState()
   {
     state_machine_->Delay(500ms);
     return State::WAIT_FOR_DKG_COMPLETION;
-  } else
+  }
+  else
   {
-
     aeon_secret_share_.clear();
-    aeon_share_public_key_.clear();
+    aeon_public_key_share_.clear();
     aeon_public_key_.clear();
+    aeon_secret_share_.setStr(dkg_.secret_share());
+    aeon_public_key_.setStr(dkg_.public_key());
+    aeon_qual_set_               = dkg_.qual();
+    aeon_qual_public_key_shares_ = dkg_.public_key_shares();
+    aeon_public_key_share_       = aeon_qual_public_key_shares_[id_];
     return State::BROADCAST_SIGNATURE;
   }
 }
@@ -294,60 +249,64 @@ State DkgService::OnWaitForDkgCompletionState()
  *
  * @return The next state to progress to
  */
-    State DkgService::OnBroadcastSignatureState()
+State DkgService::OnBroadcastSignatureState()
+{
+  State next_state{State::COLLECT_SIGNATURES};
+
+  auto const this_round = current_round_.load();
+
+  FETCH_LOG_DEBUG(LOGGING_NAME, "OnBroadcastSignatureState round: ", this_round);
+
+  // lookup / determine the payload we are expecting with the message
+  ConstByteArray payload{};
+  if (this_round == 0)
+  {
+    payload = GENESIS_PAYLOAD;
+  }
+  else
+  {
+    if (!GetSignaturePayload(this_round - 1u, payload))
     {
-      State next_state{State::COLLECT_SIGNATURES};
-
-      auto const this_round = current_round_.load();
-
-      FETCH_LOG_DEBUG(LOGGING_NAME, "OnBroadcastSignatureState round: ", this_round);
-
-      // lookup / determine the payload we are expecting with the message
-      ConstByteArray payload{};
-      if (this_round == 0)
-      {
-        payload = GENESIS_PAYLOAD;
-      }
-      else
-      {
-        if (!GetSignaturePayload(this_round - 1u, payload))
-        {
-          FETCH_LOG_CRITICAL(LOGGING_NAME,
-                             "Failed to lookup previous rounds signature data for broadcast");
-          state_machine_->Delay(500ms);
-          return State::BROADCAST_SIGNATURE;  // keep in a loop
-        }
-      }
-
-      FETCH_LOG_DEBUG(LOGGING_NAME, "Payload: ", payload.ToBase64(), " (round: ", this_round, ")");
-
-      // create the signature
-
-      auto signature = crypto::bls::Sign(aeon_secret_share_, payload);
-
-      FETCH_LOCK(cabinet_lock_);
-      for (auto const &member : current_cabinet_)
-      {
-        if (member == address_)
-        {
-          // we do not need to RPC call to ourselves we can simply provide the signature submission
-          FETCH_LOCK(round_lock_);
-          pending_signatures_.emplace_back(
-                  Submission{this_round, id_, aeon_share_public_key_, signature});
-        }
-        else
-        {
-          FETCH_LOG_TRACE(LOGGING_NAME, "Submitting Signature to: ", member.ToBase64());
-
-          // submit the signature to the cabinet member
-          rpc_client_.CallSpecificAddress(member, RPC_DKG_BEACON, DkgRpcProtocol::SUBMIT_SIGNATURE,
-                                          current_round_.load(), id_, aeon_share_public_key_,
-                                          signature);
-        }
-      }
-
-      return next_state;
+      FETCH_LOG_CRITICAL(LOGGING_NAME,
+                         "Failed to lookup previous rounds signature data for broadcast");
+      state_machine_->Delay(500ms);
+      return State::BROADCAST_SIGNATURE;  // keep in a loop
     }
+  }
+
+  FETCH_LOG_DEBUG(LOGGING_NAME, "Payload: ", payload.ToBase64(), " (round: ", this_round, ")");
+
+  // create the signature
+  bn::G1 signature{SignShare(payload, aeon_secret_share_)};
+  // Sanity check: verify own signature
+  if (!VerifyShare(aeon_public_key_share_, payload, signature, dkg_.group()))
+  {
+    FETCH_LOG_ERROR("Node ", id_, " computed bad share for payload ", payload.ToBase64());
+  }
+
+  FETCH_LOCK(cabinet_lock_);
+  for (auto const &member : aeon_qual_set_)
+  {
+    if (member == address_)
+    {
+      // we do not need to RPC call to ourselves we can simply provide the signature submission
+      FETCH_LOCK(round_lock_);
+      pending_signatures_.emplace_back(
+          Submission{this_round, id_, aeon_public_key_share_, signature});
+    }
+    else
+    {
+      FETCH_LOG_TRACE(LOGGING_NAME, "Submitting Signature to: ", member.ToBase64());
+
+      // submit the signature to the cabinet member
+      rpc_client_.CallSpecificAddress(member, RPC_DKG_BEACON, DkgRpcProtocol::SUBMIT_SIGNATURE,
+                                      current_round_.load(), id_, aeon_public_key_share_,
+                                      signature);
+    }
+  }
+
+  return next_state;
+}
 
 /**
  * State Handler for COLLECT_SIGNATURES
@@ -397,7 +356,8 @@ State DkgService::OnCollectSignaturesState()
       if (it->round == this_round)
       {
         // verify the signature
-        if (!crypto::bls::Verify(it->signature, it->public_key, payload))
+        if (!VerifyShare(aeon_qual_public_key_shares_[it->id], payload, it->signature,
+                         dkg_.group()))
         {
           FETCH_LOG_ERROR(LOGGING_NAME, "Failed to very signature submision. Discarding");
         }
@@ -426,7 +386,7 @@ State DkgService::OnCollectSignaturesState()
     round->RecoverSignature();
 
     // verify that the signature is correct
-    if (!crypto::bls::Verify(round->round_signature(), aeon_public_key_, payload))
+    if (!VerifySign(aeon_public_key_, payload, round->round_signature(), dkg_.group()))
     {
       FETCH_LOG_CRITICAL(LOGGING_NAME, "Failed to lookup verify signature");
       state_machine_->Delay(500ms);

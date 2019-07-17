@@ -22,8 +22,8 @@
 #include "core/containers/mapping.hpp"
 #include "core/mutex.hpp"
 #include "core/state_machine.hpp"
-#include "dkg/dkg_rpc_protocol.hpp"
 #include "dkg/dkg.hpp"
+#include "dkg/dkg_rpc_protocol.hpp"
 #include "dkg/rbc.hpp"
 #include "dkg/round.hpp"
 #include "ledger/chain/address.hpp"
@@ -133,9 +133,8 @@ public:
 
   /// @name External Events
   /// @{
-  void SubmitSignatureShare(uint64_t round, crypto::bls::Id const &id,
-                            crypto::bls::PublicKey const &public_key,
-                            crypto::bls::Signature const &signature);
+  void SubmitSignatureShare(uint64_t round, uint32_t const &id, bn::G2 const &public_key,
+                            bn::G1 const &signature);
 
   void SubmitShare(MuddleAddress const &address, std::pair<std::string, std::string> const &shares);
   void SendReliableBroadcast(RBCMessageType const &msg);
@@ -175,15 +174,14 @@ private:
   using SubscriptionPtr = std::shared_ptr<muddle::Subscription>;
   using AddressMapping  = core::Mapping<MuddleAddress, Address>;
   using EntropyHistory  = std::unordered_map<uint64_t, uint64_t>;
-  using CabinetIds      = std::unordered_map<MuddleAddress, crypto::bls::Id>;
-  using CabinetKeys     = std::unordered_map<MuddleAddress, crypto::bls::PrivateKey>;
+  using CabinetIds      = std::unordered_map<MuddleAddress, uint32_t>;
   using StateMachine    = core::StateMachine<State>;
   using StateMachinePtr = std::shared_ptr<StateMachine>;
   using RpcProtocolPtr  = std::unique_ptr<DkgRpcProtocol>;
   using Promise         = service::Promise;
   using RMutex          = std::recursive_mutex;
   using Mutex           = std::mutex;
-  using SignaturePtr    = std::unique_ptr<crypto::bls::Signature>;
+  using SignaturePtr    = std::unique_ptr<bn::G1>;
   using SignatureMap    = std::map<uint64_t, SignaturePtr>;
   using RoundMap        = std::map<uint64_t, RoundPtr>;
   using PrivateKey      = bn::Fr;
@@ -192,10 +190,9 @@ private:
 
   struct Submission
   {
-    uint64_t               round;
-    uint32_t        id;
-    bn::G2 public_key;
-    bn::G1 signature;
+    uint64_t round;
+    uint32_t id;
+    bn::G1   signature;
   };
 
   using SubmissionList = std::deque<Submission>;
@@ -215,24 +212,24 @@ private:
   RoundPtr LookupRound(uint64_t round, bool create = false);
   /// @}
 
-  ConstByteArray const  address_;         ///< Our muddle address
-  uint32_t id_;                           ///< Our DKG ID (derived from index in current_cabinet_)
-  Endpoint &            endpoint_;        ///< The muddle endpoint to communicate on
-  muddle::rpc::Server   rpc_server_;      ///< The services' RPC server
-  muddle::rpc::Client   rpc_client_;      ///< The services' RPC client
-  RpcProtocolPtr        rpc_proto_;       ///< The services RPC protocol
-  StateMachinePtr       state_machine_;   ///< The service state machine
-  rbc::RBC              rbc_;             ///< Runs the RBC protocol
-  DKG                   dkg_;            ///< Runs DKG protocol
+  ConstByteArray const address_;        ///< Our muddle address
+  uint32_t             id_;             ///< Our DKG ID (derived from index in current_cabinet_)
+  Endpoint &           endpoint_;       ///< The muddle endpoint to communicate on
+  muddle::rpc::Server  rpc_server_;     ///< The services' RPC server
+  muddle::rpc::Client  rpc_client_;     ///< The services' RPC client
+  RpcProtocolPtr       rpc_proto_;      ///< The services RPC protocol
+  StateMachinePtr      state_machine_;  ///< The service state machine
+  rbc::RBC             rbc_;            ///< Runs the RBC protocol
+  DKG                  dkg_;            ///< Runs DKG protocol
 
   /// @name State Machine Data
   /// @{
-  Promise    pending_promise_;          ///< The cached pending promise
   PrivateKey aeon_secret_share_;      ///< The current secret share for the aeon
-  PublicKey  aeon_share_public_key_;  ///< The shared public key for the aeon
+  PublicKey  aeon_public_key_share_;  ///< The shared public key for the aeon
   PublicKey  aeon_public_key_;        ///< The public key for our secret share
-  CabinetMembers dkg_qual_set_;  ///< The set of muddle addresses which successfully completed the DKG
-  PublicKeyList  aeon_qual_public_keys_;  ///< The public keys for DKG qualified set
+  CabinetMembers
+                aeon_qual_set_;  ///< The set of muddle addresses which successfully completed the DKG
+  PublicKeyList aeon_qual_public_key_shares_;  ///< The public keys for DKG qualified set
   /// @}
 
   /// @name Cabinet / Aeon Data
