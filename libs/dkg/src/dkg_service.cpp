@@ -203,7 +203,9 @@ void DkgService::SubmitSignatureShare(uint64_t round, crypto::bls::Id const &id,
  */
 void DkgService::SendReliableBroadcast(RBCMessageType const &msg)
 {
-  rbc_.SendRBroadcast(msg);
+  DKGSerializer serialiser;
+  msg.Serialize(serialiser);
+  rbc_.SendRBroadcast(serialiser.data());
 }
 
 /**
