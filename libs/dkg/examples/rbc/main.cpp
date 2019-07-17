@@ -139,17 +139,20 @@ int main()
 
     // Send reliable broadcast message
     DKGEnvelop env{ComplaintsMessage{{"hello"}, "world"}};
-    committee[0]->dkg_service.SendReliableBroadcast(env);
+    for (auto &member : committee)
+    {
+      member->dkg_service.SendReliableBroadcast(env);
+    }
 
     // Might have to extend the wait for large committees to get everyone to deliver the message
-    std::this_thread::sleep_for(std::chrono::seconds(10));
+    std::this_thread::sleep_for(std::chrono::seconds(300));
   }
 
-  // Sometimes a seg fault appears at this stage.
   for (auto &member : committee)
   {
     member->muddle.Stop();
   }
+  std::this_thread::sleep_for(std::chrono::seconds(5));
 
   return 0;
 }
