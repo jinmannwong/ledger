@@ -55,8 +55,8 @@ class DKG
   };
   static bn::G2 zeroG2_;
   static bn::Fr zeroFr_;
-  static bn::G2 G;
-  static bn::G2 H;
+  static bn::G2 group_g_;
+  static bn::G2 group_h_;
 
   CabinetMembers &cabinet_;
   std::size_t &   threshold_;
@@ -68,10 +68,11 @@ class DKG
 
   // What the DKG should return
   std::atomic<bool>       finished_{false};
-  bn::Fr                  x_i, xprime_i;
-  bn::G2                  y_;
-  std::vector<bn::G2>     y_i, v_i;
-  std::set<MuddleAddress> qual;
+  bn::Fr                  secret_share_, xprime_i;  // x_i
+  bn::G2                  public_key_;              // y
+  std::vector<bn::G2>     y_i, public_key_shares_;  // v_i
+  std::set<MuddleAddress> qual_;  ///< Set of cabinet members who take part in the public key
+                                  ///< generation after complaints
 
   // Temporary for DKG construction
   std::vector<std::vector<bn::Fr>> s_ij, sprime_ij;
@@ -141,11 +142,11 @@ class DKG
   // Map from id of node_i in complaints to a pair
   // 1. parties which exposed shares of node_i
   // 2. the shares that were exposed
-  std::unordered_map<MuddleAddress, std::pair<std::vector<std::size_t>, std::vector<bn::Fr>>>
+  std::unordered_map<MuddleAddress, std::pair<std::vector<uint32_t>, std::vector<bn::Fr>>>
       reconstruction_shares;
 
   template <typename T>
-  void Init(std::vector<std::vector<T>> &data, std::size_t i, std::size_t j)
+  void Init(std::vector<std::vector<T>> &data, uint32_t i, uint32_t j)
   {
     data.resize(i);
     for (auto &data_i : data)
@@ -159,7 +160,7 @@ class DKG
   }
 
   template <typename T>
-  void Init(std::vector<T> &data, std::size_t i)
+  void Init(std::vector<T> &data, uint32_t i)
   {
     data.resize(i);
     for (auto &data_i : data)
@@ -168,23 +169,23 @@ class DKG
     }
   }
 
-  uint32_t CabinetIndex(const MuddleAddress &other_address) const;
+  uint32_t CabinetIndex(MuddleAddress const &other_address) const;
 
   void SendBroadcast(DKGEnvelop const &env);
   void BroadcastComplaints();
   void BroadcastComplaintsAnswer();
   void BroadcastQualComplaints();
   void BroadcastReconstructionShares();
-  void OnNewCoefficients(const std::shared_ptr<CoefficientsMessage> &coefficients,
-                         const MuddleAddress &                       from_id);
-  void OnComplaints(const std::shared_ptr<ComplaintsMessage> &complaint,
-                    const MuddleAddress &                     from_id);
-  void OnExposedShares(const std::shared_ptr<SharesMessage> &shares, const MuddleAddress &from_id);
-  void OnComplaintsAnswer(const std::shared_ptr<SharesMessage> &answer,
-                          const MuddleAddress &                 from_id);
-  void OnQualComplaints(const std::shared_ptr<SharesMessage> &shares, const MuddleAddress &from_id);
-  void OnReconstructionShares(const std::shared_ptr<SharesMessage> &shares,
-                              const MuddleAddress &                 from_id);
+  void OnNewCoefficients(std::shared_ptr<CoefficientsMessage> const &coefficients,
+                         MuddleAddress const &                       from_id);
+  void OnComplaints(std::shared_ptr<ComplaintsMessage> const &complaint,
+                    MuddleAddress const &                     from_id);
+  void OnExposedShares(std::shared_ptr<SharesMessage> const &shares, MuddleAddress const &from_id);
+  void OnComplaintsAnswer(std::shared_ptr<SharesMessage> const &answer,
+                          MuddleAddress const &                 from_id);
+  void OnQualComplaints(std::shared_ptr<SharesMessage> const &shares, MuddleAddress const &from_id);
+  void OnReconstructionShares(std::shared_ptr<SharesMessage> const &shares,
+                              MuddleAddress const &                 from_id);
 
   bool BuildQual();
   void ComputeSecretShare();
@@ -196,17 +197,32 @@ public:
   explicit DKG(MuddleAddress address, CabinetMembers &cabinet, std::size_t &threshold,
                DkgService &dkg_service);
 
-  void BroadcastShares();
-  void ResetCabinet();
-  void OnNewShares(MuddleAddress from_id, std::pair<MsgShare, MsgShare> const &shares);
-  void OnDkgMessage(MuddleAddress const &from, std::shared_ptr<DKGMessage> msg_ptr);
-  bool finished() const;
-
-  std::string GroupPublicKey() const
+  void   BroadcastShares();
+  void   ResetCabinet();
+  void   OnNewShares(MuddleAddress from_id, std::pair<MsgShare, MsgShare> const &shares);
+  void   OnDkgMessage(MuddleAddress const &from, std::shared_ptr<DKGMessage> msg_ptr);
+  bool   finished() const;
+  bn::G2 group() const
   {
-    return y_.getStr();
+    return group_g_;
+  }
+
+  std::string public_key() const
+  {
+    return public_key_.getStr();
+  }
+  std::string secret_share() const
+  {
+    return secret_share_.getStr();
+  }
+  std::vector<bn::G2> public_key_shares() const
+  {
+    return public_key_shares_;
+  }
+  std::set<MuddleAddress> qual() const
+  {
+    return qual_;
   }
 };
-
 }  // namespace dkg
 }  // namespace fetch
