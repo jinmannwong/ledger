@@ -107,6 +107,7 @@ DkgService::DkgService(Endpoint &endpoint, ConstByteArray address)
   // clang-format off
   state_machine_->RegisterHandler(State::BUILD_AEON_KEYS,     this, &DkgService::OnBuildAeonKeysState);
   state_machine_->RegisterHandler(State::WAIT_FOR_DKG_COMPLETION,  this, &DkgService::OnWaitForDkgCompletionState);
+  state_machine_->RegisterHandler(State::BROADCAST_SIGNATURE, this, &DkgService::OnBroadcastSignatureState);
   state_machine_->RegisterHandler(State::COLLECT_SIGNATURES,  this, &DkgService::OnCollectSignaturesState);
   state_machine_->RegisterHandler(State::COMPLETE,            this, &DkgService::OnCompleteState);
   // clang-format on
@@ -136,14 +137,17 @@ void DkgService::SendShares(MuddleAddress const &                      destinati
  * @param id The id of the issuer
  * @param public_key The public key for signature verification
  * @param signature The signature to be submitted
+ * @param signature The signature to be submitted
  */
-void DkgService::SubmitSignatureShare(uint64_t round, uint32_t const &id, bn::G2 const &public_key,
-                                      bn::G1 const &signature)
+void DkgService::SubmitSignatureShare(uint64_t round, uint32_t const &id,
+                                      std::string const &sig_str)
 {
   FETCH_LOG_TRACE(LOGGING_NAME, "Submit of signature for round ", round);
 
+  bn::G1 signature;
+  signature.setStr(sig_str);
   FETCH_LOCK(round_lock_);
-  pending_signatures_.emplace_back(Submission{round, id, public_key, signature});
+  pending_signatures_.emplace_back(Submission{round, id, signature});
 }
 
 /**
@@ -291,8 +295,7 @@ State DkgService::OnBroadcastSignatureState()
     {
       // we do not need to RPC call to ourselves we can simply provide the signature submission
       FETCH_LOCK(round_lock_);
-      pending_signatures_.emplace_back(
-          Submission{this_round, id_, aeon_public_key_share_, signature});
+      pending_signatures_.emplace_back(Submission{this_round, id_, signature});
     }
     else
     {
@@ -300,8 +303,7 @@ State DkgService::OnBroadcastSignatureState()
 
       // submit the signature to the cabinet member
       rpc_client_.CallSpecificAddress(member, RPC_DKG_BEACON, DkgRpcProtocol::SUBMIT_SIGNATURE,
-                                      current_round_.load(), id_, aeon_public_key_share_,
-                                      signature);
+                                      current_round_.load(), id_, signature.getStr());
     }
   }
 

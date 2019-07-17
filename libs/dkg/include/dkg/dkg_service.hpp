@@ -133,8 +133,7 @@ public:
 
   /// @name External Events
   /// @{
-  void SubmitSignatureShare(uint64_t round, uint32_t const &id, bn::G2 const &public_key,
-                            bn::G1 const &signature);
+  void SubmitSignatureShare(uint64_t round, uint32_t const &id, std::string const &signature);
 
   void SubmitShare(MuddleAddress const &address, std::pair<std::string, std::string> const &shares);
   void SendReliableBroadcast(RBCMessageType const &msg);
