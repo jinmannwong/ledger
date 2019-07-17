@@ -175,6 +175,8 @@ class DKG
   void SendCoefficients(std::vector<bn::Fr> const &a_i, std::vector<bn::Fr> const &b_i);
   void SendShares(std::vector<bn::Fr> const &a_i, std::vector<bn::Fr> const &b_i);
   std::unordered_set<MuddleAddress> ComputeComplaints();
+  void CheckComplaintAnswer(std::shared_ptr<SharesMessage> const &answer,
+                            MuddleAddress const &from_id, uint32_t from_index);
 
   void SendBroadcast(DKGEnvelop const &env);
   void BroadcastComplaints();

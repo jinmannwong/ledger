@@ -451,10 +451,9 @@ void DKG::OnExposedShares(const std::shared_ptr<SharesMessage> &shares,
   }
 }
 
-void DKG::OnComplaintsAnswer(const std::shared_ptr<SharesMessage> &answer,
-                             const MuddleAddress &                 from_id)
+void DKG::CheckComplaintAnswer(std::shared_ptr<SharesMessage> const &answer,
+                               MuddleAddress const &from_id, uint32_t from_index)
 {
-  uint32_t from_index{CabinetIndex(from_id)};
   for (const auto &share : answer->shares())
   {
     uint32_t reporter_index{CabinetIndex(share.first)};
@@ -486,6 +485,14 @@ void DKG::OnComplaintsAnswer(const std::shared_ptr<SharesMessage> &answer,
       }
     }
   }
+}
+
+void DKG::OnComplaintsAnswer(const std::shared_ptr<SharesMessage> &answer,
+                             const MuddleAddress &                 from_id)
+{
+  uint32_t from_index{CabinetIndex(from_id)};
+  CheckComplaintAnswer(answer, from_id, from_index);
+
   complaint_answers_received[from_index] = true;
   msg_counter_.Increment(MsgCounter::Message::COMPLAINT_ANSWER);
   assert(complaints.empty());
