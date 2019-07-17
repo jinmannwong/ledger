@@ -263,31 +263,11 @@ DkgService::Status DkgService::GenerateEntropy(Digest block_digest, uint64_t blo
  */
 State DkgService::OnBuildAeonKeysState()
 {
-if (is_dealer_)
-{
-  BuildAeonKeys();
-
+  dkg_.BroadcastShares();
   // since we are the dealer we do not need to request a signature from ourselves
-  return State::BROADCAST_SIGNATURE;
+  return State::WAIT_FOR_DKG_COMPLETION;
 }
 
-return State::REQUEST_SECRET_KEY;
-}
-
-/**
- * State Handler for REQUEST_SECRET_KEY
- *
- * @return The next state to progress to
- */
-State DkgService::OnRequestSecretKeyState()
-{
-// request from the beacon for the secret key
-pending_promise_ = rpc_client_.CallSpecificAddress(dealer_address_, RPC_DKG_BEACON,
-                                                   DkgRpcProtocol::REQUEST_SECRET, address_);
-
-return State::WAIT_FOR_SECRET_KEY;
-
-}
 
 /**
  * State Handler for WAIT_FOR_SECRET_KEY
