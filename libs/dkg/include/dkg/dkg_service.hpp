@@ -22,7 +22,6 @@
 #include "core/containers/mapping.hpp"
 #include "core/mutex.hpp"
 #include "core/state_machine.hpp"
-#include "crypto/bls_base.hpp"
 #include "dkg/dkg_rpc_protocol.hpp"
 #include "dkg/dkg.hpp"
 #include "dkg/rbc.hpp"
@@ -113,8 +112,7 @@ public:
   enum class State
   {
     BUILD_AEON_KEYS,
-    REQUEST_SECRET_KEY,
-    WAIT_FOR_SECRET_KEY,
+    WAIT_FOR_DKG_COMPLETION,
     BROADCAST_SIGNATURE,
     COLLECT_SIGNATURES,
     COMPLETE,
@@ -135,14 +133,6 @@ public:
 
   /// @name External Events
   /// @{
-  struct SecretKeyReq
-  {
-    bool                    success{false};
-    crypto::bls::PrivateKey secret_share{};
-    crypto::bls::PublicKey  shared_public_key{};
-  };
-  SecretKeyReq RequestSecretKey(MuddleAddress const &address);
-
   void SubmitSignatureShare(uint64_t round, crypto::bls::Id const &id,
                             crypto::bls::PublicKey const &public_key,
                             crypto::bls::Signature const &signature);
@@ -178,7 +168,6 @@ public:
   {
     dkg_.BroadcastShares();
   }
-  bool dkg_completed {false};
 
   std::string GroupPublicKey() const
   {
@@ -223,8 +212,6 @@ private:
   /// @name State Handlers
   /// @{
   State OnBuildAeonKeysState();
-  State OnRequestSecretKeyState();
-  State OnWaitForSecretKeyState();
   State OnCollectSignaturesState();
   State OnCompleteState();
   /// @}
@@ -237,15 +224,13 @@ private:
 
   ConstByteArray const  address_;         ///< Our muddle address
   crypto::bls::Id const id_;              ///< Our BLS ID (derived from the muddle address)
-  ConstByteArray const  dealer_address_;  ///< The address of the dealer
-  bool const            is_dealer_;       ///< Flag to signal if we are the dealer
   Endpoint &            endpoint_;        ///< The muddle endpoint to communicate on
   muddle::rpc::Server   rpc_server_;      ///< The services' RPC server
   muddle::rpc::Client   rpc_client_;      ///< The services' RPC client
   RpcProtocolPtr        rpc_proto_;       ///< The services RPC protocol
   StateMachinePtr       state_machine_;   ///< The service state machine
   rbc::RBC              rbc_;             ///< Runs the RBC protocol
-  DKG                 dkg_;            ///< Runs DKG protocol
+  DKG                   dkg_;            ///< Runs DKG protocol
 
   /// @name State Machine Data
   /// @{
@@ -262,13 +247,6 @@ private:
   CabinetMembers current_cabinet_{};     ///< The set of muddle addresses of the cabinet
   /// @}
 
-  /// @name Dealer Specific Data
-  /// @{
-  mutable RMutex dealer_lock_;                // Priority 2.
-  PublicKey      shared_public_key_;          ///< The shared public key for the aeon
-  CabinetKeys    current_cabinet_secrets_{};  ///< The map of address to secrets
-  /// @}
-
   /// @name Round Data
   /// @{
   mutable RMutex        round_lock_{};                 // Priority 3.
@@ -278,28 +256,6 @@ private:
   RoundMap              rounds_{};                     ///< The map of round data
   /// @}
 };
-
-template <typename T>
-void Serialize(T &stream, DkgService::SecretKeyReq const &req)
-{
-  stream << req.success;
-
-  if (req.success)
-  {
-    stream << req.secret_share << req.shared_public_key;
-  }
-}
-
-template <typename T>
-void Deserialize(T &stream, DkgService::SecretKeyReq &req)
-{
-  stream >> req.success;
-
-  if (req.success)
-  {
-    stream >> req.secret_share >> req.shared_public_key;
-  }
-}
 
 }  // namespace dkg
 }  // namespace fetch
