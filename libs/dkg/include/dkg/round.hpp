@@ -46,7 +46,7 @@ public:
   Round(Round &&)      = delete;
   ~Round()             = default;
 
-  uint64_t                      round() const;
+  uint64_t      round() const;
   bn::G1 const &round_signature() const
   {
     return round_signature_;
@@ -65,11 +65,11 @@ public:
   Round &operator=(Round &&) = delete;
 
 private:
-  uint64_t const             round_;
-  mutable std::mutex         lock_{};
-  std::unordered_map<uint32_t, bn::G1>  round_sig_shares_;
-  bn::G1     round_signature_;
-  byte_array::ConstByteArray round_entropy_{};
+  uint64_t const                       round_;
+  mutable std::mutex                   lock_{};
+  std::unordered_map<uint32_t, bn::G1> round_sig_shares_;
+  bn::G1                               round_signature_;
+  byte_array::ConstByteArray           round_entropy_{};
 
   std::atomic<std::size_t> num_shares_{0};
   std::atomic<bool>        has_signature_{};

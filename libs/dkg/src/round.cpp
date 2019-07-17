@@ -19,8 +19,8 @@
 #include "core/mutex.hpp"
 #include "crypto/hash.hpp"
 #include "crypto/sha256.hpp"
-#include "dkg/round.hpp"
 #include "dkg/dkg_helper.hpp"
+#include "dkg/round.hpp"
 
 #include <algorithm>
 #include <cstdint>
