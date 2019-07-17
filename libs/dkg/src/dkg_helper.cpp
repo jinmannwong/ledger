@@ -25,8 +25,9 @@ namespace bn = mcl::bn256;
 
 namespace fetch {
 namespace dkg {
-bn::G2 computeLHS(bn::G2 &tmpG, const bn::G2 &G, const bn::G2 &H, const bn::Fr &share1,
-                  const bn::Fr &share2)
+
+bn::G2 ComputeLHS(bn::G2 &tmpG, bn::G2 const &G, bn::G2 const &H, bn::Fr const &share1,
+                  bn::Fr const &share2)
 {
   bn::G2 tmp2G, lhsG;
   tmp2G.clear();
@@ -38,20 +39,20 @@ bn::G2 computeLHS(bn::G2 &tmpG, const bn::G2 &G, const bn::G2 &H, const bn::Fr &
   return lhsG;
 }
 
-bn::G2 computeLHS(const bn::G2 &G, const bn::G2 &H, const bn::Fr &share1, const bn::Fr &share2)
+bn::G2 ComputeLHS(bn::G2 const &G, bn::G2 const &H, bn::Fr const &share1, bn::Fr const &share2)
 {
   bn::G2 tmpG;
   tmpG.clear();
-  return computeLHS(tmpG, G, H, share1, share2);
+  return ComputeLHS(tmpG, G, H, share1, share2);
 }
 
-void updateRHS(size_t rank, bn::G2 &rhsG, const std::vector<bn::G2> &input)
+void UpdateRHS(uint32_t rank, bn::G2 &rhsG, std::vector<bn::G2> const &input)
 {
   bn::Fr tmpF{1};
   bn::G2 tmpG;
   tmpG.clear();
-  assert(input.size() > 0);
-  for (size_t k = 1; k < input.size(); k++)
+  assert(input.empty());
+  for (uint32_t k = 1; k < input.size(); k++)
   {
     bn::Fr::pow(tmpF, rank + 1, k);  // adjust index $i$ in computation
     bn::G2::mul(tmpG, input[k], tmpF);
@@ -59,28 +60,28 @@ void updateRHS(size_t rank, bn::G2 &rhsG, const std::vector<bn::G2> &input)
   }
 }
 
-bn::G2 computeRHS(size_t rank, const std::vector<bn::G2> &input)
+bn::G2 ComputeRHS(uint32_t rank, std::vector<bn::G2> const &input)
 {
   bn::Fr tmpF;
   bn::G2 tmpG, rhsG;
   tmpG.clear();
   rhsG.clear();
-  assert(input.size() > 0);
+  assert(input.empty());
   // initialize rhsG
   rhsG = input[0];
-  updateRHS(rank, rhsG, input);
+  UpdateRHS(rank, rhsG, input);
   return rhsG;
 }
 
-void computeShares(bn::Fr &s_i, bn::Fr &sprime_i, const std::vector<bn::Fr> &a_i,
-                   const std::vector<bn::Fr> &b_i, size_t rank)
+void ComputeShares(bn::Fr &s_i, bn::Fr &sprime_i, std::vector<bn::Fr> const &a_i,
+                   std::vector<bn::Fr> const &b_i, uint32_t rank)
 {
   bn::Fr pow, tmpF;
   assert(a_i.size() == b_i.size());
-  assert(a_i.size() > 0);
+  assert(a_i.empty());
   s_i      = a_i[0];
   sprime_i = b_i[0];
-  for (size_t k = 1; k < a_i.size(); k++)
+  for (uint32_t k = 1; k < a_i.size(); k++)
   {
     bn::Fr::pow(pow, rank + 1, k);   // adjust index $j$ in computation
     bn::Fr::mul(tmpF, pow, b_i[k]);  // j^k * b_i[k]
@@ -90,7 +91,7 @@ void computeShares(bn::Fr &s_i, bn::Fr &sprime_i, const std::vector<bn::Fr> &a_i
   }
 }
 
-bn::Fr computeZi(const std::vector<size_t> &parties, const std::vector<bn::Fr> &shares)
+bn::Fr ComputeZi(std::vector<uint32_t> const &parties, std::vector<bn::Fr> const &shares)
 {
   // compute $z_i$ using Lagrange interpolation (without corrupted parties)
   bn::Fr z{0};
@@ -100,7 +101,8 @@ bn::Fr computeZi(const std::vector<size_t> &parties, const std::vector<bn::Fr> &
     bn::Fr rhsF{1}, lhsF{1}, tmpF;
     for (auto lt : parties)
     {
-      if (lt != jt) {
+      if (lt != jt)
+      {
         // adjust index in computation
         bn::Fr::mul(rhsF, rhsF, lt + 1);
       }
@@ -123,25 +125,26 @@ bn::Fr computeZi(const std::vector<size_t> &parties, const std::vector<bn::Fr> &
   return z;
 }
 
-std::vector<bn::Fr> interpolatePolynom(const std::vector<bn::Fr> &a, const std::vector<bn::Fr> &b)
+std::vector<bn::Fr> InterpolatePolynom(std::vector<bn::Fr> const &a, std::vector<bn::Fr> const &b)
 {
-  size_t m = a.size();
-  if ((b.size() != m) || (m == 0)) {
+  auto m = static_cast<uint32_t>(a.size());
+  if ((b.size() != m) || (m == 0))
+  {
     throw std::invalid_argument("mcl_interpolate_polynom: bad m");
   }
   std::vector<bn::Fr> prod{a}, res(m, 0);
   bn::Fr              t1, t2;
-  for (size_t k = 0; k < m; k++)
+  for (uint32_t k = 0; k < m; k++)
   {
     t1 = 1;
-    for (long i = k - 1; i >= 0; i--)
+    for (uint32_t i = k - 1; i >= 0; i--)
     {
       bn::Fr::mul(t1, t1, a[k]);
       bn::Fr::add(t1, t1, prod[i]);
     }
 
     t2 = 0;
-    for (long i = k - 1; i >= 0; i--)
+    for (uint32_t i = k - 1; i >= 0; i--)
     {
       bn::Fr::mul(t2, t2, a[k]);
       bn::Fr::add(t2, t2, res[i]);
@@ -160,14 +163,15 @@ std::vector<bn::Fr> interpolatePolynom(const std::vector<bn::Fr> &a, const std::
     res[k] = t1;
     if (k < (m - 1))
     {
-      if (k == 0) {
+      if (k == 0)
+      {
         bn::Fr::neg(prod[0], prod[0]);
       }
       else
       {
         bn::Fr::neg(t1, a[k]);
         bn::Fr::add(prod[k], t1, prod[k - 1]);
-        for (long i = k - 1; i >= 1; i--)
+        for (uint32_t i = k - 1; i >= 1; i--)
         {
           bn::Fr::mul(t2, prod[i], t1);
           bn::Fr::add(prod[i], t2, prod[i - 1]);
@@ -179,24 +183,25 @@ std::vector<bn::Fr> interpolatePolynom(const std::vector<bn::Fr> &a, const std::
   return res;
 }
 
-bn::G1 signShare(const std::string &message, const bn::Fr &x_i)
+bn::G1 SignShare(byte_array::ConstByteArray const &message, bn::Fr const &x_i)
 {
   bn::Fp Hm;
   bn::G1 PH;
   bn::G1 sign;
   sign.clear();
-  Hm.setHashOf(message);
+  Hm.setHashOf(&message, message.size());
   bn::mapToG1(PH, Hm);
   bn::G1::mul(sign, PH, x_i);  // sign = s H(m)
   return sign;
 }
 
-bool verifyShare(const bn::G2 &v_i, const std::string &message, const bn::G1 &sign, const bn::G2 &G)
+bool VerifyShare(bn::G2 const &v_i, byte_array::ConstByteArray const &message, bn::G1 const &sign,
+                 bn::G2 const &G)
 {
   bn::Fp12 e1, e2;
   bn::Fp   Hm;
   bn::G1   PH;
-  Hm.setHashOf(message);
+  Hm.setHashOf(&message, message.size());
   bn::mapToG1(PH, Hm);
 
   bn::pairing(e1, sign, G);  // should this be H?
@@ -204,12 +209,13 @@ bool verifyShare(const bn::G2 &v_i, const std::string &message, const bn::G1 &si
   return e1 == e2;
 }
 
-bool verifySign(const bn::G2 &y, const std::string &message, const bn::G1 &sign, const bn::G2 &G)
+bool VerifySign(bn::G2 const &y, byte_array::ConstByteArray const &message, bn::G1 const &sign,
+                bn::G2 const &G)
 {
   bn::Fp12 e1, e2;
   bn::Fp   Hm;
   bn::G1   PH;
-  Hm.setHashOf(message);
+  Hm.setHashOf(&message, message.size());
   bn::mapToG1(PH, Hm);
 
   bn::pairing(e1, sign, G);
@@ -218,9 +224,9 @@ bool verifySign(const bn::G2 &y, const std::string &message, const bn::G1 &sign,
   return e1 == e2;
 }
 
-bn::G1 lagrangeInterpolation(const std::unordered_map<size_t, bn::G1> &shares)
+bn::G1 LagrangeInterpolation(std::unordered_map<uint32_t, bn::G1> const &shares)
 {
-  assert(shares.size() > 0);
+  assert(shares.empty());
   if (shares.size() == 1)
   {
     return shares.begin()->second;
