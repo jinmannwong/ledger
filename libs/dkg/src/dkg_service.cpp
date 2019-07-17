@@ -282,6 +282,9 @@ State DkgService::OnWaitForDkgCompletionState()
   } else
   {
 
+    aeon_secret_share_.clear();
+    aeon_share_public_key_.clear();
+    aeon_public_key_.clear();
     return State::BROADCAST_SIGNATURE;
   }
 }
@@ -319,6 +322,7 @@ State DkgService::OnWaitForDkgCompletionState()
       FETCH_LOG_DEBUG(LOGGING_NAME, "Payload: ", payload.ToBase64(), " (round: ", this_round, ")");
 
       // create the signature
+
       auto signature = crypto::bls::Sign(aeon_secret_share_, payload);
 
       FETCH_LOCK(cabinet_lock_);

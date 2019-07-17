@@ -188,7 +188,7 @@ private:
   using RoundMap        = std::map<uint64_t, RoundPtr>;
   using PrivateKey      = bn::Fr;
   using PublicKey       = bn::G2;
-  using PublicKeyList   = crypto::bls::PublicKeyList;
+  using PublicKeyList   = std::vector<bn::G2>;
 
   struct Submission
   {
@@ -228,9 +228,11 @@ private:
   /// @name State Machine Data
   /// @{
   Promise    pending_promise_;          ///< The cached pending promise
-  PrivateKey aeon_secret_share_{};      ///< The current secret share for the aeon
-  PublicKey  aeon_share_public_key_{};  ///< The shared public key for the aeon
-  PublicKey  aeon_public_key_{};        ///< The public key for our secret share
+  PrivateKey aeon_secret_share_;      ///< The current secret share for the aeon
+  PublicKey  aeon_share_public_key_;  ///< The shared public key for the aeon
+  PublicKey  aeon_public_key_;        ///< The public key for our secret share
+  CabinetMembers dkg_qual_set_;  ///< The set of muddle addresses which successfully completed the DKG
+  PublicKeyList  aeon_qual_public_keys_;  ///< The public keys for DKG qualified set
   /// @}
 
   /// @name Cabinet / Aeon Data
