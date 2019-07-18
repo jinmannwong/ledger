@@ -239,11 +239,11 @@ State DkgService::OnWaitForDkgCompletionState()
     aeon_secret_share_.clear();
     aeon_public_key_share_.clear();
     aeon_public_key_.clear();
-    aeon_secret_share_.setStr(dkg_.secret_share());
-    aeon_public_key_.setStr(dkg_.public_key());
-    aeon_qual_set_               = dkg_.qual();
-    aeon_qual_public_key_shares_ = dkg_.public_key_shares();
-    aeon_public_key_share_       = aeon_qual_public_key_shares_[id_];
+    //aeon_secret_share_.setStr(dkg_.secret_share()); // TODO(HUT): chat to Jenny
+    //aeon_public_key_.setStr(dkg_.public_key());
+    //aeon_qual_set_               = dkg_.qual();
+    //aeon_qual_public_key_shares_ = dkg_.public_key_shares();
+    //aeon_public_key_share_       = aeon_qual_public_key_shares_[id_];
     return State::BROADCAST_SIGNATURE;
   }
 }

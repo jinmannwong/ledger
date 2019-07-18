@@ -35,7 +35,7 @@ TEST(dkg_messages, coefficients)
   fetch::serializers::ByteArrayBuffer serialiser1(serialiser.data());
   CoefficientsMessage                 coeff1{serialiser1};
 
-  for (auto ii = 0; ii < coeff.coefficients().size(); ++ii)
+  for (uint64_t ii = 0; ii < coeff.coefficients().size(); ++ii)
   {
     EXPECT_EQ(coeff1.coefficients()[ii], coeff.coefficients()[ii]);
   }

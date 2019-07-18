@@ -18,12 +18,12 @@
 //------------------------------------------------------------------------------
 
 #include "core/byte_array/const_byte_array.hpp"
+#include "crypto/fetch_mcl.hpp"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iomanip>
-#include <mcl/bn256.hpp>
 #include <sstream>
 #include <unordered_map>
 

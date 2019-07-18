@@ -148,7 +148,9 @@ public:
   }
   std::string GroupPublicKey()
   {
-    return dkg_.public_key();
+    // TODO(HUT): chat to Jenny
+    //return dkg_.PublicKey();
+    return {};
   }
   /// @}
 

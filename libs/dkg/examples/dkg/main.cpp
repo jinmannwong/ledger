@@ -142,11 +142,11 @@ int main()
       member->dkg_service.StartDkg();
     }
 
-    auto ii = 0;
+    uint64_t ii = 0;
     while (ii != cabinet_size)
     {
       std::this_thread::sleep_for(std::chrono::seconds(5));
-      for (auto jj = ii; jj < cabinet_size; ++jj)
+      for (uint64_t jj = ii; jj < cabinet_size; ++jj)
       {
         if (!committee[jj]->dkg_service.DkgCompleted())
         {

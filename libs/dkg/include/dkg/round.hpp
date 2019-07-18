@@ -19,7 +19,7 @@
 
 #include "core/byte_array/const_byte_array.hpp"
 #include "core/mutex.hpp"
-#include <mcl/bn256.hpp>
+#include "crypto/fetch_mcl.hpp"
 
 #include <atomic>
 #include <cstddef>

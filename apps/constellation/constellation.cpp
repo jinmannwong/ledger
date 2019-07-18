@@ -39,6 +39,7 @@
 #include "network/p2pservice/p2p_http_interface.hpp"
 #include "network/uri.hpp"
 #include "telemetry_http_module.hpp"
+#include "crypto/bls.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -174,9 +175,9 @@ DkgServicePtr CreateDkgService(Constellation::Config const &cfg, ConstByteArray 
 
   if (cfg.proof_of_stake && !cfg.beacon_address.empty())
   {
-    crypto::bls::Init();
+    fetch::crypto::details::BLSInitialiser init{};
 
-    dkg = std::make_unique<dkg::DkgService>(endpoint, address, cfg.beacon_address);
+    dkg = std::make_unique<dkg::DkgService>(endpoint, address);
   }
 
   return dkg;
