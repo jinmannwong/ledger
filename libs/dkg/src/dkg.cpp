@@ -234,7 +234,7 @@ void DKG::BroadcastComplaints()
 void DKG::BroadcastComplaintsAnswer()
 {
   std::unordered_map<MuddleAddress, std::pair<MsgShare, MsgShare>> complaints_answer;
-  for (const auto &reporter : complaints_from)
+  for (auto const &reporter : complaints_from)
   {
     uint32_t from_index{CabinetIndex(reporter)};
     complaints_answer.insert({reporter,
@@ -252,7 +252,7 @@ void DKG::BroadcastQualComplaints()
   std::unordered_set<MuddleAddress> complaints_local;
   uint32_t                          i  = 0;
   auto                              iq = cabinet_.begin();
-  for (const auto &miner : qual_)
+  for (auto const &miner : qual_)
   {
     while (*iq != miner)
     {
@@ -297,7 +297,7 @@ void DKG::BroadcastReconstructionShares()
   std::lock_guard<std::mutex> lock{mutex_};
 
   std::unordered_map<MuddleAddress, std::pair<MsgShare, MsgShare>> complaint_shares;
-  for (const auto &in : complaints)
+  for (auto const &in : complaints)
   {
     assert(qual_.find(in) != qual_.end());
     uint32_t in_index{CabinetIndex(in)};
@@ -326,8 +326,8 @@ void DKG::OnNewShares(MuddleAddress from, std::pair<MsgShare, MsgShare> const &s
   ReceivedCoefficientsAndShares();
 }
 
-void DKG::OnNewCoefficients(const std::shared_ptr<CoefficientsMessage> &msg_ptr,
-                            const MuddleAddress &                       from_id)
+void DKG::OnNewCoefficients(std::shared_ptr<CoefficientsMessage> const &msg_ptr,
+                            MuddleAddress const &                       from_id)
 {
   uint32_t from_index{CabinetIndex(from_id)};
   if (msg_ptr->phase() == static_cast<uint64_t>(State::WAITING_FOR_SHARE))
@@ -356,7 +356,7 @@ void DKG::OnNewCoefficients(const std::shared_ptr<CoefficientsMessage> &msg_ptr,
       }
     }
     msg_counter_.Increment(MsgCounter::Message::QUAL_COEFFICIENT);
-    if ((state_ == State::WAITING_FOR_QUAL_SHARES) and
+    if ((state_ == State::WAITING_FOR_QUAL_SHARES) &&
         (msg_counter_.Count(MsgCounter::Message::QUAL_COEFFICIENT) == cabinet_.size() - 1))
     {
       BroadcastQualComplaints();
@@ -364,8 +364,8 @@ void DKG::OnNewCoefficients(const std::shared_ptr<CoefficientsMessage> &msg_ptr,
   }
 }
 
-void DKG::OnComplaints(const std::shared_ptr<ComplaintsMessage> &msg_ptr,
-                       const MuddleAddress &                     from_id)
+void DKG::OnComplaints(std::shared_ptr<ComplaintsMessage> const &msg_ptr,
+                       MuddleAddress const &                     from_id)
 {
   uint32_t                    from_index{CabinetIndex(from_id)};
   std::lock_guard<std::mutex> lock{mutex_};
@@ -383,7 +383,7 @@ void DKG::OnComplaints(const std::shared_ptr<ComplaintsMessage> &msg_ptr,
     return;
   }
 
-  for (const auto &bad_node : msg_ptr->complaints())
+  for (auto const &bad_node : msg_ptr->complaints())
   {
     ++complaints_counter[bad_node];
     // If a node receives complaint against itself then store in complaints from
@@ -396,7 +396,7 @@ void DKG::OnComplaints(const std::shared_ptr<ComplaintsMessage> &msg_ptr,
     }
   }
   msg_counter_.Increment(MsgCounter::Message::COMPLAINT);
-  if (state_ == State::WAITING_FOR_COMPLAINTS and
+  if (state_ == State::WAITING_FOR_COMPLAINTS &&
       (msg_counter_.Count(MsgCounter::Message::COMPLAINT) == cabinet_.size() - 1))
   {
     // Add miners which did not send a complaint to complaints (redundant for now but will be
@@ -404,7 +404,7 @@ void DKG::OnComplaints(const std::shared_ptr<ComplaintsMessage> &msg_ptr,
     auto miner_it = cabinet_.begin();
     for (uint32_t ii = 0; ii < complaints_received.size(); ++ii)
     {
-      if (!complaints_received[ii] and ii != cabinet_index_)
+      if (!complaints_received[ii] && ii != cabinet_index_)
       {
         FETCH_LOG_WARN(LOGGING_NAME, "Node ", cabinet_index_, "received no complaint from node ",
                        ii);
@@ -413,7 +413,7 @@ void DKG::OnComplaints(const std::shared_ptr<ComplaintsMessage> &msg_ptr,
       ++miner_it;
     }
     // All miners who have received over t complaints are also disqualified
-    for (const auto &node_complaints : complaints_counter)
+    for (auto const &node_complaints : complaints_counter)
     {
       if (node_complaints.second > threshold_)
       {
@@ -427,8 +427,8 @@ void DKG::OnComplaints(const std::shared_ptr<ComplaintsMessage> &msg_ptr,
   }
 }
 
-void DKG::OnExposedShares(const std::shared_ptr<SharesMessage> &shares,
-                          const MuddleAddress &                 from_id)
+void DKG::OnExposedShares(std::shared_ptr<SharesMessage> const &shares,
+                          MuddleAddress const &                 from_id)
 {
   uint64_t phase1{shares->phase()};
   if (phase1 == static_cast<uint64_t>(State::WAITING_FOR_COMPLAINT_ANSWERS))
@@ -454,7 +454,7 @@ void DKG::OnExposedShares(const std::shared_ptr<SharesMessage> &shares,
 void DKG::CheckComplaintAnswer(std::shared_ptr<SharesMessage> const &answer,
                                MuddleAddress const &from_id, uint32_t from_index)
 {
-  for (const auto &share : answer->shares())
+  for (auto const &share : answer->shares())
   {
     uint32_t reporter_index{CabinetIndex(share.first)};
     // Verify shares received
@@ -487,8 +487,8 @@ void DKG::CheckComplaintAnswer(std::shared_ptr<SharesMessage> const &answer,
   }
 }
 
-void DKG::OnComplaintsAnswer(const std::shared_ptr<SharesMessage> &answer,
-                             const MuddleAddress &                 from_id)
+void DKG::OnComplaintsAnswer(std::shared_ptr<SharesMessage> const &answer,
+                             MuddleAddress const &                 from_id)
 {
   uint32_t from_index{CabinetIndex(from_id)};
   CheckComplaintAnswer(answer, from_id, from_index);
@@ -496,7 +496,7 @@ void DKG::OnComplaintsAnswer(const std::shared_ptr<SharesMessage> &answer,
   complaint_answers_received[from_index] = true;
   msg_counter_.Increment(MsgCounter::Message::COMPLAINT_ANSWER);
   assert(complaints.empty());
-  if (state_ == State::WAITING_FOR_COMPLAINT_ANSWERS and
+  if (state_ == State::WAITING_FOR_COMPLAINT_ANSWERS &&
       (msg_counter_.Count(MsgCounter::Message::COMPLAINT_ANSWER) == cabinet_.size() - 1))
   {
     // Add miners which did not send a complaint to complaints (redundant for now but will be
@@ -504,7 +504,7 @@ void DKG::OnComplaintsAnswer(const std::shared_ptr<SharesMessage> &answer,
     auto miner_it = cabinet_.begin();
     for (uint32_t ii = 0; ii < complaint_answers_received.size(); ++ii)
     {
-      if (!complaint_answers_received[ii] and ii != cabinet_index_)
+      if (!complaint_answers_received[ii] && ii != cabinet_index_)
       {
         FETCH_LOG_INFO(LOGGING_NAME, "Node ", cabinet_index_,
                        " received no complaint answer from node ", ii);
@@ -532,7 +532,7 @@ bool DKG::BuildQual()
   // 3. Nodes who did not complaint answers
   // 4. Complaint answers which were false
   FETCH_LOG_INFO(LOGGING_NAME, "Node ", cabinet_index_, " has complaints size ", complaints.size());
-  for (const auto &node : cabinet_)
+  for (auto const &node : cabinet_)
   {
     if (complaints.find(node) == complaints.end())
     {
@@ -585,11 +585,11 @@ void DKG::ComputeSecretShare()
   complaints.clear();
 }
 
-void DKG::OnQualComplaints(const std::shared_ptr<SharesMessage> &shares_ptr,
-                           const MuddleAddress &                 from_id)
+void DKG::OnQualComplaints(std::shared_ptr<SharesMessage> const &shares_ptr,
+                           MuddleAddress const &                 from_id)
 {
   uint32_t from_index{CabinetIndex(from_id)};
-  for (const auto &share : shares_ptr->shares())
+  for (auto const &share : shares_ptr->shares())
   {
     // Check person who's shares are being exposed is not in QUAL then don't bother with checks
     if (qual_.find(share.first) != qual_.end())
@@ -624,14 +624,14 @@ void DKG::OnQualComplaints(const std::shared_ptr<SharesMessage> &shares_ptr,
     }
   }
   qual_complaints_received.insert(from_id);
-  if (state_ == State::WAITING_FOR_QUAL_COMPLAINTS and
+  if (state_ == State::WAITING_FOR_QUAL_COMPLAINTS &&
       (qual_complaints_received.size() == qual_.size() - 1))
   {
     // Add QUAL members which did not send a complaint to complaints (redundant for now but will be
     // necessary when we do not wait for a message from everyone)
-    for (const auto &iq : qual_)
+    for (auto const &iq : qual_)
     {
-      if (iq != address_ and qual_complaints_received.find(iq) == qual_complaints_received.end())
+      if (iq != address_ && qual_complaints_received.find(iq) == qual_complaints_received.end())
       {
         complaints.insert(iq);
       }
@@ -653,8 +653,8 @@ void DKG::OnQualComplaints(const std::shared_ptr<SharesMessage> &shares_ptr,
   }
 }
 
-void DKG::OnReconstructionShares(const std::shared_ptr<SharesMessage> &shares_ptr,
-                                 const MuddleAddress &                 from_id)
+void DKG::OnReconstructionShares(std::shared_ptr<SharesMessage> const &shares_ptr,
+                                 MuddleAddress const &                 from_id)
 {
   // Return if the sender is in complaints, or not in QUAL
   if (complaints.find(from_id) != complaints.end() or qual_.find(from_id) == qual_.end())
@@ -678,7 +678,7 @@ void DKG::OnReconstructionShares(const std::shared_ptr<SharesMessage> &shares_pt
     lhs = ComputeLHS(group_g_, group_h_, s, sprime);
     rhs = ComputeRHS(from_index, C_ik[victim_index]);
     // check equation (4)
-    if (lhs == rhs and reconstruction_shares.at(share.first).second[from_index] == zeroFr_)
+    if (lhs == rhs && reconstruction_shares.at(share.first).second[from_index] == zeroFr_)
     {
       std::lock_guard<std::mutex> lock{mutex_};
       reconstruction_shares.at(share.first).first.push_back(from_index);  // good share received
@@ -686,7 +686,7 @@ void DKG::OnReconstructionShares(const std::shared_ptr<SharesMessage> &shares_pt
     }
   }
   msg_counter_.Increment(MsgCounter::Message::RECONSTRUCTION_SHARE);
-  if (state_ == State::WAITING_FOR_RECONSTRUCTION_SHARES and
+  if (state_ == State::WAITING_FOR_RECONSTRUCTION_SHARES &&
       msg_counter_.Count(MsgCounter::Message::RECONSTRUCTION_SHARE) ==
           qual_.size() - complaints.size() - 1)
   {
@@ -708,7 +708,7 @@ bool DKG::RunReconstruction()
 {
   std::vector<std::vector<bn::Fr>> a_ik;
   Init(a_ik, static_cast<uint32_t>(cabinet_.size()), static_cast<uint32_t>(threshold_ + 1));
-  for (const auto &in : reconstruction_shares)
+  for (auto const &in : reconstruction_shares)
   {
     std::vector<uint32_t> parties{in.second.first};
     std::vector<bn::Fr>   shares{in.second.second};
@@ -742,24 +742,24 @@ void DKG::ComputePublicKeys()
 {
   FETCH_LOG_INFO(LOGGING_NAME, "Node: ", cabinet_index_, " compute public keys");
   // For all parties in $QUAL$, set $y_i = A_{i0} = g^{z_i} \bmod p$.
-  for (const auto &iq : qual_)
+  for (auto const &iq : qual_)
   {
     uint32_t it{CabinetIndex(iq)};
     y_i[it] = A_ik[it][0];
   }
   // Compute $y = \prod_{i \in QUAL} y_i \bmod p$
   public_key_.clear();
-  for (const auto &iq : qual_)
+  for (auto const &iq : qual_)
   {
     uint32_t it{CabinetIndex(iq)};
     bn::G2::add(public_key_, public_key_, y_i[it]);
   }
   // Compute public_key_shares_ $v_j = \prod_{i \in QUAL} \prod_{k=0}^t (A_{ik})^{j^k} \bmod
   // p$
-  for (const auto &jq : qual_)
+  for (auto const &jq : qual_)
   {
     uint32_t jt{CabinetIndex(jq)};
-    for (const auto &iq : qual_)
+    for (auto const &iq : qual_)
     {
       uint32_t it{CabinetIndex(iq)};
       bn::G2::add(public_key_shares_[jt], public_key_shares_[jt], A_ik[it][0]);
@@ -768,7 +768,7 @@ void DKG::ComputePublicKeys()
   }
 }
 
-uint32_t DKG::CabinetIndex(const MuddleAddress &other_address) const
+uint32_t DKG::CabinetIndex(MuddleAddress const &other_address) const
 {
   return static_cast<uint32_t>(std::distance(cabinet_.begin(), cabinet_.find(other_address)));
 }
@@ -788,5 +788,15 @@ bool DKG::finished() const
 {
   return finished_.load();
 }
+
+void DKG::SetDkgOutput(bn::G2 &public_key, bn::Fr &secret_share,
+                       std::vector<bn::G2> &public_key_shares, std::set<MuddleAddress> &qual) const
+{
+  public_key        = public_key_;
+  secret_share      = secret_share_;
+  public_key_shares = public_key_shares_;
+  qual              = qual_;
+}
+
 }  // namespace dkg
 }  // namespace fetch

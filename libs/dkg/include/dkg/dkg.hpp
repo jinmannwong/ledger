@@ -208,27 +208,12 @@ public:
   void   ResetCabinet();
   void   OnNewShares(MuddleAddress from_id, std::pair<MsgShare, MsgShare> const &shares);
   void   OnDkgMessage(MuddleAddress const &from, std::shared_ptr<DKGMessage> msg_ptr);
+  void   SetDkgOutput(bn::G2 &public_key, bn::Fr &secret_share,
+                      std::vector<bn::G2> &public_key_shares, std::set<MuddleAddress> &qual) const;
   bool   finished() const;
   bn::G2 group() const
   {
     return group_g_;
-  }
-
-  std::string public_key() const
-  {
-    return public_key_.getStr();
-  }
-  std::string secret_share() const
-  {
-    return secret_share_.getStr();
-  }
-  std::vector<bn::G2> public_key_shares() const
-  {
-    return public_key_shares_;
-  }
-  std::set<MuddleAddress> qual() const
-  {
-    return qual_;
   }
 };
 }  // namespace dkg
